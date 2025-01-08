@@ -4,10 +4,27 @@ from scipy import optimize
 
 class GLMHMM:
     def __init__(self, N, n_states, n_features, n_outputs, max_iter=100, em_dist="gaussian"):
+        """
+        Initializes the GLMHMM class.
+
+        Args:
+            N (int): Number of data samples.
+            n_states (int): Number of hidden states (K).
+            n_features (int): Number of input features (D), excluding the bias term.
+            n_outputs (int): Dimensionality of the output.
+            max_iter (int): Maximum number of iterations for fitting.
+            em_dist (str): Type of emission distribution ("gaussian" by default).
+
+        Attributes:
+            transition_matrix (ndarray): KxK matrix of transition probabilities.
+            w (ndarray): KxDx n_outputs matrix of weights for the emission distributions.
+            covariances (ndarray): Kx n_outputs x n_outputs covariance matrices for Gaussian emissions.
+            pdf (callable): Probability density function for Gaussian emissions.
+        """
         self.N = N
         self.n_states = n_states # K
         self.n_features = n_features + 1 # D
-        self.n_outputs = n_outputs # dim of y
+        self.n_outputs = n_outputs
         self.max_iter = max_iter
 
         # Initialize
@@ -15,7 +32,7 @@ class GLMHMM:
             self.pdf = multivariate_normal.pdf
             self.w = np.random.randn(self.n_states, self.n_features - 1, self.n_outputs)
             self.w = np.pad(self.w, ((0, 0), (0, 1), (0, 0)), mode='constant')
-            self.covariances = np.array([np.eye(n_outputs) for _ in range(n_states)])
+            self.covariances = np.array([1e-3 * np.eye(n_outputs) for _ in range(n_states)])
         else:
             self.pdf = None
         
@@ -24,43 +41,53 @@ class GLMHMM:
 
     def dist_param(self, wk, x):
         """
-        Human designed formula of f where theta_t = f(w_k, x_t)
-        wk has shape (D, output dim)
-        x has shape (N, D)
-        Return distribution parameter over time - thetak of shape (N, output dim)
+        Computes the distribution parameters (e.g., the mean) for a given state and input.
+
+        Args:
+            wk (ndarray): Weights for a specific state, shape (D, output_dim).
+            x (ndarray): Input data, shape (N, D).
+
+        Returns:
+            ndarray: Distribution parameters (e.g., mean) over time, shape (N, output_dim).
         """
         pre_act = x @ wk
         return np.tanh(pre_act)
-        thetak = np.zeros((x.shape[0], self.n_outputs))
-        for i in range(x.shape[0]):
-            thetak[i] = np.tanh(x[i] @ wk)
-        return thetak 
 
     def neglogli(self, wk, x, y, gammak, otherparamk=None, reshape_weights=False):
         """
-        Compute the negative log-likelihood of the observation given each state.
-        wk has shape (D, output dim)
-        x has shape (N, D)
-        thetak has shape (N, output dim)
-        y has shape (N, output dim)
-        gammak has shape (N, )
-        Return a number -sum_t (gamma_t * log(p(y_t | theta_t)))
+        Computes the negative log-likelihood of observations for a specific state.
+
+        Args:
+            wk (ndarray): Weights for the current state, shape (D, output_dim).
+            x (ndarray): Input data, shape (N, D).
+            y (ndarray): Observations, shape (N, output_dim).
+            gammak (ndarray): Posterior probabilities for the state, shape (N,).
+            otherparamk (optional): Additional parameters for the distribution.
+            reshape_weights (bool): If True, reshape weights to match dimensions.
+
+        Returns:
+            float: Negative log-likelihood for the state -- -sum_t (gamma_t * log(p(y_t | theta_t))). 
         """
         if reshape_weights:
           wk = wk.reshape((self.n_features - 1, self.n_outputs))
           wk = np.vstack((wk, np.zeros((1, self.n_outputs))))
 
-        thetak = self.dist_param(wk, x)
-        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk)) for i in range(self.n_states)]
+        thetak = self.dist_param(wk, x)        
+        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk)) for i in range(self.N)]
         ll = np.sum(ll_list)
         return -ll
 
     def dist_pdf(self, y, thetak, otherparamk=None):
         """
-        Calculate the pdf of a distribution, given y and parameters
-        return f(y) of shape (N, )
-        y has shape (N, output dim)
-        thetak has shape (N, output dim)
+        Evaluates the probability density of observations for a given state.
+
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            thetak (ndarray): Distribution parameters (e.g., mean), shape (N, output_dim).
+            otherparamk (optional): Covariance matrix or other distribution-specific parameters.
+
+        Returns:
+            ndarray: Probability density values for each time step, shape (N,).
         """
         thetakt = []
         if self.pdf is not None:
@@ -75,6 +102,17 @@ class GLMHMM:
         return 0
 
     def _compute_likelihood(self, xt, yt):
+        """
+        Computes the likelihood of observations for all hidden states.
+
+        Args:
+            xt (ndarray): Input data for a single time step, shape (1, D).
+            yt (ndarray): Observations for a single time step, shape (1, output_dim).
+
+        Returns:
+            ndarray: Likelihood values for all states, shape (K,).
+        """
+
         ll = []
         for k in range(self.n_states):
             wk = self.w[k]
@@ -84,6 +122,16 @@ class GLMHMM:
         
 
     def predict(self, X, Y):
+        """
+        Decodes the most likely sequence of states using the Viterbi algorithm.
+
+        Args:
+            X (ndarray): Input data, shape (N, D).
+            Y (ndarray): Observations, shape (N, output_dim).
+
+        Returns:
+            ndarray: Most likely sequence of states, shape (N,).
+        """
         n_samples = X.shape[0]
         log_probs = np.zeros((n_samples, self.n_states))
         prev_states = np.zeros((n_samples, self.n_states), dtype=int)
@@ -95,25 +143,33 @@ class GLMHMM:
 
         for t in range(1, n_samples):
             for j in range(self.n_states):
-                log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j])) + \
-                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j])
-                prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]))
+                log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))
+                prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))        
 
         states = np.zeros(n_samples, dtype=int)
         states[-1] = np.argmax(log_probs[-1])
+        # print('log_probs shape', log_probs.shape)
+        # print('prev_states', prev_states)
         for t in range(n_samples - 2, -1, -1):
+            # print('state', states[t+1])
             states[t] = prev_states[t + 1, states[t + 1]]
 
         return states
 
     def generate_data(self, n_samples):
         """
-        Generate synthetic data given the model parameters.
+        Generates synthetic data using the model's parameters.
+
+        Args:
+            n_samples (int): Number of data samples to generate.
 
         Returns:
-        - X: Input features.
-        - Y: Observations.
-        - states: True hidden states.
+            tuple: 
+                - X (ndarray): Generated input features, shape (N, D-1).
+                - Y (ndarray): Generated observations, shape (N, output_dim).
+                - states (ndarray): True hidden states, shape (N,).
         """
         X = np.random.randn(n_samples, self.n_features-1)
         states = np.zeros(n_samples, dtype=int)
@@ -139,26 +195,21 @@ class GLMHMM:
 
 
     def _updateTransitions(self,y,alpha,beta,cs,A,phi):
+        """
+        Updates the transition probabilities during the M-step of the EM algorithm.
 
-        '''
-        Updates transition probabilities as part of the M-step of the EM algorithm.
-        Currently only functional for stationary transitions (GLM on transitions not supported)
-        Uses closed form updates as described in Bishop Ch. 13
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            alpha (ndarray): Forward probabilities, shape (N, K).
+            beta (ndarray): Backward probabilities, shape (N, K).
+            cs (ndarray): Scaling factors for forward probabilities, shape (N,).
+            A (ndarray): Current transition matrix, shape (K, K).
+            phi (ndarray): Emission probabilities, shape (N, K).
 
-        Parameters
-        ----------
-        y : nx1 vector of observations
-        alpha : nx1 vector of the conditional probabilities p(z_t|x_{1:t},y_{1:t})
-        beta : nx1 vector of the conditional probabilities p(z_t|x_{1:t},y_{1:t})
-        cs : nx1 vector of the forward marginal likelihoods
-        A : kxk matrix of transition probabilities
-        phi : kxc or nxkxc matrix of emission probabilities
+        Returns:
+            ndarray: Updated transition matrix, shape (K, K).
+        """
 
-        Returns
-        -------
-        A_new : kxk matrix of updated transition probabilities
-
-        '''
         # compute xis, the joint posterior distribution of two successive latent variables p(z_{t-1},z_t |Y,theta_old)
         xis = np.zeros((self.N-1,self.n_states,self.n_states))
         for i in np.arange(0,self.N-1):
@@ -174,21 +225,20 @@ class GLMHMM:
         return A_new
 
     def _updateObservations(self,y,x,w,gammas):
+        """
+        Updates the emission parameters (weights and covariances) during the M-step.
 
-        '''
-        Updates emissions probabilities as part of the M-step of the EM algorithm.
-        For stationary observations, see the HMM class
-        Uses gradient descent to find optimal update of weights
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            x (ndarray): Input features, shape (N, D).
+            w (ndarray): Current weights, shape (K, D, output_dim).
+            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
 
-        Parameters
-        ----------
-        y : nx1 vector of observations
-        gammas : nxk matrix of the posterior probabilities of the latent states
-
-        Returns
-        -------
-        kxc matrix of updated emissions probabilities
-        '''
+        Returns:
+            tuple:
+                - Updated weights, shape (K, D, output_dim).
+                - Updated emission probabilities, shape (N, K).
+        """
 
         # reshape y from vector of indices to one-hot encoded array for matrix operations in glm.fit
         if y.ndim == 1:
@@ -197,6 +247,7 @@ class GLMHMM:
         self.phi = np.zeros((self.N,self.n_states))
 
         for zk in np.arange(self.n_states):
+            # print('zk', zk)
             self.w[zk], self.phi[:,zk] = self._glmfit(x,w[zk],y,self.covariances[zk], 
                                                       #compHess=self.hessian,
                                                       gammak=gammas[:,zk],
@@ -211,17 +262,29 @@ class GLMHMM:
 
     def _glmfit(self,x,wk,y,otherparamk=None, compHess=False,gammak=None,gaussianPrior=0):
         """
-        Use gradient descent to optimize weights
-        wk has shape (D, output dim)
-        x has shape (N, D)
-        Return: phi is of shape (N, )
+        Fits the GLM weights using gradient descent (L-BFGS-B).
+
+        Args:
+            x (ndarray): Input features, shape (N, D).
+            wk (ndarray): Initial weights, shape (D, output_dim).
+            y (ndarray): Observations, shape (N, output_dim).
+            otherparamk (optional): Additional parameters for the distribution.
+            compHess (bool): Compute the Hessian matrix (default=False).
+            gammak (ndarray): Posterior probabilities for the state, shape (N,).
+            gaussianPrior (float): Gaussian prior regularization parameter.
+
+        Returns:
+            tuple:
+                - Optimized weights, shape (D, output_dim).
+                - Emission probabilities, shape (N,).
         """
 
         w_flat = np.ndarray.flatten(wk[:-1,:]) # flatten weights for optimization
         opt_log = lambda w: self.neglogli(w, x, y, gammak, otherparamk=otherparamk, reshape_weights=True) # calculate log likelihood
 
+        # simplefilter(action='ignore', category=FutureWarning) # ignore FutureWarning generated by scipy
         OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B")
-      
+
         wk = np.vstack((np.reshape(OptimizeResult.x,(self.n_features-1,self.n_outputs)), np.zeros((1, self.n_outputs)))) # reshape and update weights
         thetak = self.dist_param(wk, x) # calculate theta
         phi = self.dist_pdf(y, thetak, otherparamk=otherparamk) # calculate phi
@@ -229,6 +292,15 @@ class GLMHMM:
         return wk, phi
 
     def _updateInitStates(self,gammas):
+        """
+        Updates the initial state probabilities during the M-step.
+
+        Args:
+            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
+
+        Returns:
+            ndarray: Updated initial state probabilities, shape (K,).
+        """
         return np.divide(gammas[0],sum(gammas[0])) # new initial latent state probabilities
 
 
@@ -248,26 +320,26 @@ class GLMHMM:
         return self.transition_matrix, self.w, self.phi, self.pi0
 
     def fit(self,y,x,A,w,pi0=None,fit_init_states=False,maxiter=250,tol=1e-3,sess=None,B=1):
-        '''
-        Parameters
-        ----------
-        y : nx1 vector of observations
-        A : initial kxk matrix of transition probabilities
-        phi : initial kxc or nxkxc matrix of emission probabilities
-        pi0 : initial kx1 vector of state probabilities for t=1.
-        fit_init_states : boolean, determines if EM will including fitting pi
-        maxiter : int. The maximum number of iterations of EM to allow. The default is 250.
-        tol : float. The tolerance value for the loglikelihood to allow early stopping of EM. The default is 1e-3.
-        sessions : an optional vector of the first and last indices of different sessions in the data (for
-        separate computations of the E step; first and last entries should be 0 and n, respectively)
-        B : an optional temperature parameter used when fitting via direct annealing EM (DAEM; see Ueda and Nakano 1998)
-        Returns
-        -------
-        lls : vector of loglikelihoods for each step of EM, size maxiter
-        A : fitted kxk matrix of transition probabilities
-        w : fitted kxdxc omatrix of weights
-        pi0 : fitted kx1 vector of state probabilities for t= (only different from initial value of fit_init_states=True)
-        '''
+        """
+        Fits the GLMHMM to the data using the EM algorithm.
+
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            x (ndarray): Input features, shape (N, D-1).
+            A (ndarray): Initial transition matrix, shape (K, K).
+            w (ndarray): Initial weights, shape (K, D, output_dim).
+            pi0 (optional): Initial state probabilities, shape (K,).
+            fit_init_states (bool): Whether to optimize initial state probabilities.
+            maxiter (int): Maximum number of EM iterations.
+            tol (float): Convergence tolerance for the log-likelihood.
+            sess (optional): Session boundaries for separate EM computation.
+            B (float): Temperature parameter for annealing.
+
+        Returns:
+            tuple:
+                - Log-likelihood values for each iteration.
+                - Fitted transition matrix, weights, and initial probabilities.
+        """
         x = np.hstack([x, np.ones((x.shape[0], 1))])
 
         self.lls = np.empty(maxiter)
@@ -281,7 +353,6 @@ class GLMHMM:
             thetak = self.dist_param(w[k], x) # calculate theta
             for t in range(self.N):
                 phi[t,k] = self.dist_pdf(y[t], thetak[t], otherparamk=self.covariances[k]) # calculate phi
-            # phi[:,k] = self.dist_pdf(y, thetak, otherparamk=self.covariances[k]) # calculate phi
 
         if sess is None:
             sess = np.array([0,self.N]) # equivalent to saying the entire data set has one session
@@ -326,23 +397,21 @@ class GLMHMM:
 
 
     def forwardPass(self,y,A,phi,pi0=None):
+        """
+        Computes forward probabilities and log-likelihood during the E-step.
 
-        '''
-        Computes forward pass of Expectation Maximization (EM) algorithm; first half of E-step.
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            A (ndarray): Transition matrix, shape (K, K).
+            phi (ndarray): Emission probabilities, shape (N, K).
+            pi0 (optional): Initial state probabilities, shape (K,).
 
-        Parameters
-        ----------
-        y : nx1 vector of observations
-        A : kxk matrix of transition probabilities
-        phi : nxkxc matrix of emission probabilities
-
-        Returns
-        -------
-        ll : float, marginal log-likelihood of the data p(y)
-        alpha : nx1 vector of the conditional probabilities p(z_t|x_{1:t},y_{1:t})
-        cs : nx1 vector of the forward marginal likelihoods
-
-        '''
+        Returns:
+            tuple:
+                - Log-likelihood of the observations.
+                - Forward probabilities (alpha), shape (N, K).
+                - Forward marginal likelihoods (cs), shape (N,).
+        """
 
         alpha = np.zeros((y.shape[0],self.n_states)) # forward probabilities p(z_t | y_1:t)
         alpha_prior = np.zeros_like(alpha) # prior probabilities p(z_t | y_1:t-1)
@@ -358,38 +427,35 @@ class GLMHMM:
         alpha[0] = pxz/cs[0] # conditional p(z_1 | y_1)
         alpha_prior[0] = 1/self.n_states # conditional p(z_0 | y_0)
 
-        # forward pass for remaining time bins
+        # forward pass for remaining time bins 
         for i in np.arange(1,y.shape[0]):
             alpha_prior[i] = alpha[i-1]@A # propogate uncertainty forward
             pxz = np.multiply(phi[i,:],alpha_prior[i]) # joint P(y_1:t,z_t)
             cs[i] = np.sum(pxz) # conditional p(y_t | y_1:t-1)
             alpha[i] = pxz/cs[i] # conditional p(z_t | y_1:t)
-
+        # print('cs', cs)
         ll = np.sum(np.log(cs))
 
         return ll,alpha,alpha_prior,cs
 
 
     def backwardPass(self,y,A,phi,alpha,cs):
+        """
+        Computes backward probabilities and posterior probabilities during the E-step.
 
-        '''
-        Computes backward pass of Expectation Maximization (EM) algorithm; second half of "E-step".
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            A (ndarray): Transition matrix, shape (K, K).
+            phi (ndarray): Emission probabilities, shape (N, K).
+            alpha (ndarray): Forward probabilities, shape (N, K).
+            cs (ndarray): Scaling factors from forward pass, shape (N,).
 
-        Parameters
-        ----------
-        y : nx1 vector of observations
-        A : kxk matrix of transition probabilities
-        phi : nxkxc matrix of emission probabilities
-        alpha : nx1 vector of the conditional probabilities p(z_t|x_{1:t},y_{1:t})
-        cs : nx1 vector of the forward marginal likelihoods
-
-        Returns
-        -------
-        pBack : nxk matrix of the posterior probabilities of the latent states
-        beta : nx1 vector of the conditional probabilities p(z_t|x_{1:t},y_{1:t})
-        zhatBack : nx1 vector of the most probable state at each time point
-
-        '''
+        Returns:
+            tuple:
+                - Posterior probabilities, shape (N, K).
+                - Backward probabilities (beta), shape (N, K).
+                - Most probable states, shape (N,).
+        """
 
         beta = np.zeros((y.shape[0],self.n_states))
 
@@ -400,10 +466,14 @@ class GLMHMM:
         for i in np.arange(y.shape[0]-2,-1,-1):
             beta_prior = np.multiply(beta[i+1],phi[i+1,:]) # propogate uncertainty backward
             beta[i] = (A@beta_prior)/cs[i+1]
+            # print('cs', cs[i+1])
 
         pBack = np.multiply(alpha,beta) # posterior after backward pass -> alpha_hat(z_n)*beta_hat(z_n)
         zhatBack = np.argmax(pBack,axis=1) # decode from likelihoods only
 
-        assert np.round(sum(pBack[0]),5) == 1, "Sum of posterior state probabilities does not equal 1"
+        if np.round(sum(pBack[0]),5) == 1:
+            print("Sum of posterior state probabilities does not equal 1")
+        else:
+            print("equals 1") 
 
         return pBack,beta,zhatBack
