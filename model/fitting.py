@@ -1,6 +1,6 @@
 from sklearn.metrics import adjusted_rand_score
 from numpy import np
-import model.ssm_package.ssm as ssm
+import ssm
 import matplotlib.pyplot as plt
 from glmhmm import GLMHMM
 
@@ -21,10 +21,12 @@ def OptStateCV_traj(train_trajectories, traj_metric=None, model = "hmm", states_
   val_lls = np.zeros((len(states_cands), n_folds, num_init))  # array to store performance results
   aris = np.zeros((len(states_cands), n_folds))
   for i, num_states in enumerate(states_cands):
+
     if model == "glmhmm":
-      ws = np.zeros((n_folds, num_init, num_states, self.n_features - 1, self.n_outputs))
-      As = np.zeros((n_folds, num_init, num_states, num_states))
-      pi0s = np.zeros(())
+      w_allfold = []
+      A_allfold = []
+      pi0_allfold = []
+
     print(f"---------------Number of states: {num_states}---------------")
     for fold in range(n_folds):
       print(f"---------------fold {fold+1}---------------")
@@ -51,9 +53,16 @@ def OptStateCV_traj(train_trajectories, traj_metric=None, model = "hmm", states_
       # fit hmm
       obs_dim=curv_train.shape[1] if curv_train.ndim > 1 else 1
       most_likely_states_list = []
+      n_features = len(inpts[0][0])
+
+      if model == "glmhmm":
+        ws = np.zeros((num_init, num_states, n_features + 1, obs_dim))
+        As = np.zeros((num_init, num_states, num_states))
+        pi0s = np.zeros((num_init, num_states))
+
       for init in range(num_init):
         if inpts is not None:
-          hmm = ssm.HMM(num_states, obs_dim, len(inpts[0][0]),
+          hmm = ssm.HMM(num_states, obs_dim, n_features,
                 observations=obs_dist,
                 transitions="inputdriven")
           model_lls = hmm.fit(curv_train, inputs=train_inpts, method="em", num_iters=N_iters, init_method="kmeans")
@@ -66,9 +75,15 @@ def OptStateCV_traj(train_trajectories, traj_metric=None, model = "hmm", states_
           else:
             assert model=='glmhmm'
             ##########TODO###########
-            model = GLMHMM(len(curv_train), num_states, len(inpts[0][0]), obs_dim) #N, n_states, n_features, n_outputs
+            model = GLMHMM(len(curv_train), num_states, n_features, obs_dim) #N, n_states, n_features, n_outputs
+            # initialize A, w and pi0#####TODO#########
             lls,A,w,pi0 = model.fit(curv_train,train_inpts,A,w, fit_init_states=True)
-            As
+            As[init] = A
+            pi0s[init] = pi0
+            ws[init] = w
+
+            train_ll = lls[-1]/len(curv_train)
+            print("Train ll", train_ll)
             
 
         # validate
@@ -91,13 +106,18 @@ def OptStateCV_traj(train_trajectories, traj_metric=None, model = "hmm", states_
           ari_list.append(adjusted_rand_score(most_likely_states_list[init_i], most_likely_states_list[init_j]))
       aris[i, fold] = np.mean(ari_list)
 
+      w_allfold.append(ws)
+      A_allfold.append(As)
+      pi0_allfold.append(pi0s)
+
+
     if model == "hmm":
       ############TODO##############
       pass
     elif model == "glmhmm":
-      res_params[num_states]['ws'] = ws
-      res_params[num_states]["As"] = As
-      res_params[num_states]["pi0"] = pi0s
+      res_params[num_states]['ws'] = np.array(w_allfold)
+      res_params[num_states]["As"] = np.array(A_allfold)
+      res_params[num_states]["pi0"] = np.array(pi0_allfold)
 
     # val_lls # num of states x num of folds
   if verbose:
