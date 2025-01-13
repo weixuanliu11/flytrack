@@ -37,46 +37,7 @@ class GLMHMM:
             self.pdf = None
         
         self.transition_matrix = np.full((self.n_states, self.n_states), 1 / self.n_states) # uniformly distributed
-
-
-    def dist_param(self, wk, x):
-        """
-        Computes the distribution parameters (e.g., the mean) for a given state and input.
-
-        Args:
-            wk (ndarray): Weights for a specific state, shape (D, output_dim).
-            x (ndarray): Input data, shape (N, D).
-
-        Returns:
-            ndarray: Distribution parameters (e.g., mean) over time, shape (N, output_dim).
-        """
-        pre_act = x @ wk
-        return np.tanh(pre_act)
-
-    def neglogli(self, wk, x, y, gammak, otherparamk=None, reshape_weights=False):
-        """
-        Computes the negative log-likelihood of observations for a specific state.
-
-        Args:
-            wk (ndarray): Weights for the current state, shape (D, output_dim).
-            x (ndarray): Input data, shape (N, D).
-            y (ndarray): Observations, shape (N, output_dim).
-            gammak (ndarray): Posterior probabilities for the state, shape (N,).
-            otherparamk (optional): Additional parameters for the distribution.
-            reshape_weights (bool): If True, reshape weights to match dimensions.
-
-        Returns:
-            float: Negative log-likelihood for the state -- -sum_t (gamma_t * log(p(y_t | theta_t))). 
-        """
-        if reshape_weights:
-          wk = wk.reshape((self.n_features - 1, self.n_outputs))
-          wk = np.vstack((wk, np.zeros((1, self.n_outputs))))
-
-        thetak = self.dist_param(wk, x)        
-        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk)) for i in range(self.N)]
-        ll = np.sum(ll_list)
-        return -ll
-
+    
     def dist_pdf(self, y, thetak, otherparamk=None):
         """
         Evaluates the probability density of observations for a given state.
@@ -101,224 +62,22 @@ class GLMHMM:
           raise Exception("No distribution function defined")
         return 0
 
-    def _compute_likelihood(self, xt, yt):
+    def dist_param(self, wk, x):
         """
-        Computes the likelihood of observations for all hidden states.
+        Computes the distribution parameters (e.g., the mean) for a given state and input.
 
         Args:
-            xt (ndarray): Input data for a single time step, shape (1, D).
-            yt (ndarray): Observations for a single time step, shape (1, output_dim).
+            wk (ndarray): Weights for a specific state, shape (D, output_dim).
+            x (ndarray): Input data, shape (N, D).
 
         Returns:
-            ndarray: Likelihood values for all states, shape (K,).
+            ndarray: Distribution parameters (e.g., mean) over time, shape (N, output_dim).
         """
-
-        ll = []
-        for k in range(self.n_states):
-            wk = self.w[k]
-            thetakt = self.dist_param(wk, xt)
-            ll.append(self.dist_pdf(yt, thetakt, otherparamk=self.covariances[k]))
-        return np.array(ll)
-        
-
-    def predict(self, X, Y):
-        """
-        Decodes the most likely sequence of states using the Viterbi algorithm.
-
-        Args:
-            X (ndarray): Input data, shape (N, D).
-            Y (ndarray): Observations, shape (N, output_dim).
-
-        Returns:
-            ndarray: Most likely sequence of states, shape (N,).
-        """
-        n_samples = X.shape[0]
-        log_probs = np.zeros((n_samples, self.n_states))
-        prev_states = np.zeros((n_samples, self.n_states), dtype=int)
-
-        # Augment X with intercept column for prediction
-        X_augmented = np.hstack([np.ones((X.shape[0], 1)), X])  # Add intercept column
-
-        log_probs[0] = np.log(self._compute_likelihood(X_augmented[0], Y[0])) + np.log(1 / self.n_states)
-
-        for t in range(1, n_samples):
-            for j in range(self.n_states):
-                log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
-                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))
-                prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
-                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))        
-
-        states = np.zeros(n_samples, dtype=int)
-        states[-1] = np.argmax(log_probs[-1])
-        # print('log_probs shape', log_probs.shape)
-        # print('prev_states', prev_states)
-        for t in range(n_samples - 2, -1, -1):
-            # print('state', states[t+1])
-            states[t] = prev_states[t + 1, states[t + 1]]
-
-        return states
-
-    def generate_data(self, n_samples):
-        """
-        Generates synthetic data using the model's parameters.
-
-        Args:
-            n_samples (int): Number of data samples to generate.
-
-        Returns:
-            tuple: 
-                - X (ndarray): Generated input features, shape (N, D-1).
-                - Y (ndarray): Generated observations, shape (N, output_dim).
-                - states (ndarray): True hidden states, shape (N,).
-        """
-        X = np.random.randn(n_samples, self.n_features-1)
-        states = np.zeros(n_samples, dtype=int)
-        Y = np.zeros((n_samples, self.n_outputs))
-
-        # Generate initial state and observation
-        states[0] = np.random.choice(self.n_states)
-        X_augmented = np.hstack([X, np.ones((X.shape[0], 1))])  # Add intercept column
-        Y[0] = np.random.multivariate_normal(
-            mean=X_augmented[0] @ self.w[states[0]],
-            cov=self.covariances[states[0]]
-        )
-
-        # Generate subsequent states and observations
-        for t in range(1, n_samples):
-            states[t] = np.random.choice(self.n_states, p=self.transition_matrix[states[t - 1]])
-            Y[t] = np.random.multivariate_normal(
-                mean=X_augmented[t] @ self.w[states[t]],
-                cov=self.covariances[states[t]]
-            )
-
-        return X, Y, states
-
-
-    def _updateTransitions(self,y,alpha,beta,cs,A,phi):
-        """
-        Updates the transition probabilities during the M-step of the EM algorithm.
-
-        Args:
-            y (ndarray): Observations, shape (N, output_dim).
-            alpha (ndarray): Forward probabilities, shape (N, K).
-            beta (ndarray): Backward probabilities, shape (N, K).
-            cs (ndarray): Scaling factors for forward probabilities, shape (N,).
-            A (ndarray): Current transition matrix, shape (K, K).
-            phi (ndarray): Emission probabilities, shape (N, K).
-
-        Returns:
-            ndarray: Updated transition matrix, shape (K, K).
-        """
-
-        # compute xis, the joint posterior distribution of two successive latent variables p(z_{t-1},z_t |Y,theta_old)
-        xis = np.zeros((self.N-1,self.n_states,self.n_states))
-        for i in np.arange(0,self.N-1):
-            beta_phi = beta[i+1,:] * phi[i,:]
-            alpha_reshaped = np.reshape(alpha[i,:],(self.n_states,1))
-            xis[i,:,:] = ((beta_phi * alpha_reshaped) * A)/cs[i+1]
-
-        # reshape and sum xis to obtain new transition matrix
-        xis_n = np.reshape(np.sum(xis,axis=0),(self.n_states,self.n_states)) # sum_N xis
-        xis_kn = np.reshape(np.sum(np.sum(xis,axis=0),axis=1),(self.n_states,1)) # sum_k sum_N xis
-        A_new = xis_n/xis_kn
-
-        return A_new
-
-    def _updateObservations(self,y,x,w,gammas):
-        """
-        Updates the emission parameters (weights and covariances) during the M-step.
-
-        Args:
-            y (ndarray): Observations, shape (N, output_dim).
-            x (ndarray): Input features, shape (N, D).
-            w (ndarray): Current weights, shape (K, D, output_dim).
-            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
-
-        Returns:
-            tuple:
-                - Updated weights, shape (K, D, output_dim).
-                - Updated emission probabilities, shape (N, K).
-        """
-
-        # reshape y from vector of indices to one-hot encoded array for matrix operations in glm.fit
-        if y.ndim == 1:
-          y = y.reshape((-1, 1))
-
-        self.phi = np.zeros((self.N,self.n_states))
-
-        for zk in np.arange(self.n_states):
-            # print('zk', zk)
-            self.w[zk], self.phi[:,zk] = self._glmfit(x,w[zk],y,self.covariances[zk], 
-                                                      #compHess=self.hessian,
-                                                      gammak=gammas[:,zk],
-                                                      #gaussianPrior=self.gaussianPrior
-                                                      )
-
-            thetak = self.dist_param(self.w[zk], x)
-            residuals = y - thetak
-            self.covariances[zk] = np.cov(residuals.T)
-
-        return self.w, self.phi
-
-    def _glmfit(self,x,wk,y,otherparamk=None, compHess=False,gammak=None,gaussianPrior=0):
-        """
-        Fits the GLM weights using gradient descent (L-BFGS-B).
-
-        Args:
-            x (ndarray): Input features, shape (N, D).
-            wk (ndarray): Initial weights, shape (D, output_dim).
-            y (ndarray): Observations, shape (N, output_dim).
-            otherparamk (optional): Additional parameters for the distribution.
-            compHess (bool): Compute the Hessian matrix (default=False).
-            gammak (ndarray): Posterior probabilities for the state, shape (N,).
-            gaussianPrior (float): Gaussian prior regularization parameter.
-
-        Returns:
-            tuple:
-                - Optimized weights, shape (D, output_dim).
-                - Emission probabilities, shape (N,).
-        """
-
-        w_flat = np.ndarray.flatten(wk[:-1,:]) # flatten weights for optimization
-        opt_log = lambda w: self.neglogli(w, x, y, gammak, otherparamk=otherparamk, reshape_weights=True) # calculate log likelihood
-
-        # simplefilter(action='ignore', category=FutureWarning) # ignore FutureWarning generated by scipy
-        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B")
-
-        wk = np.vstack((np.reshape(OptimizeResult.x,(self.n_features-1,self.n_outputs)), np.zeros((1, self.n_outputs)))) # reshape and update weights
-        thetak = self.dist_param(wk, x) # calculate theta
-        phi = self.dist_pdf(y, thetak, otherparamk=otherparamk) # calculate phi
-
-        return wk, phi
-
-    def _updateInitStates(self,gammas):
-        """
-        Updates the initial state probabilities during the M-step.
-
-        Args:
-            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
-
-        Returns:
-            ndarray: Updated initial state probabilities, shape (K,).
-        """
-        return np.divide(gammas[0],sum(gammas[0])) # new initial latent state probabilities
-
-
-    def _updateParams(self,y,x,gammas,beta,alpha,cs,A,phi,w,fit_init_states = False):
-        '''
-        Computes the updated parameters as part of the M-step of the EM algorithm.
-
-        '''
-
-        self.transition_matrix = self._updateTransitions(y,alpha,beta,cs,A,phi)
-
-        self.w, self.phi = self._updateObservations(y,x,w,gammas)
-
-        if fit_init_states:
-            self.pi0 = self._updateInitStates(gammas)
-
-        return self.transition_matrix, self.w, self.phi, self.pi0
-
+        pre_act = x @ wk
+        return (np.tanh(pre_act) + 1)/2
+    
+    #--------------------------------------------------------------------------------#
+    #EM Algorithm
     def fit(self,y,x,A,w,pi0=None,fit_init_states=False,maxiter=250,tol=1e-3,sess=None,B=1):
         """
         Fits the GLMHMM to the data using the EM algorithm.
@@ -394,8 +153,8 @@ class GLMHMM:
         self.transition_matrix,self.w,self.phi,self.pi0 = A,w,phi,pi0
 
         return self.lls,self.transition_matrix,self.w,self.pi0
-
-
+    
+    # E Step
     def forwardPass(self,y,A,phi,pi0=None):
         """
         Computes forward probabilities and log-likelihood during the E-step.
@@ -477,3 +236,253 @@ class GLMHMM:
             print("equals 1") 
 
         return pBack,beta,zhatBack
+    
+    # M Step
+    def _updateTransitions(self,y,alpha,beta,cs,A,phi):
+        """
+        Updates the transition probabilities during the M-step of the EM algorithm.
+
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            alpha (ndarray): Forward probabilities, shape (N, K).
+            beta (ndarray): Backward probabilities, shape (N, K).
+            cs (ndarray): Scaling factors for forward probabilities, shape (N,).
+            A (ndarray): Current transition matrix, shape (K, K).
+            phi (ndarray): Emission probabilities, shape (N, K).
+
+        Returns:
+            ndarray: Updated transition matrix, shape (K, K).
+        """
+
+        # compute xis, the joint posterior distribution of two successive latent variables p(z_{t-1},z_t |Y,theta_old)
+        xis = np.zeros((self.N-1,self.n_states,self.n_states))
+        for i in np.arange(0,self.N-1):
+            beta_phi = beta[i+1,:] * phi[i,:]
+            alpha_reshaped = np.reshape(alpha[i,:],(self.n_states,1))
+            xis[i,:,:] = ((beta_phi * alpha_reshaped) * A)/cs[i+1]
+
+        # reshape and sum xis to obtain new transition matrix
+        xis_n = np.reshape(np.sum(xis,axis=0),(self.n_states,self.n_states)) # sum_N xis
+        xis_kn = np.reshape(np.sum(np.sum(xis,axis=0),axis=1),(self.n_states,1)) # sum_k sum_N xis
+        A_new = xis_n/xis_kn
+
+        return A_new
+
+    def neglogli(self, wk, x, y, gammak, otherparamk=None, reshape_weights=False):
+        """
+        Computes the negative log-likelihood of observations for a specific state.
+
+        Args:
+            wk (ndarray): Weights for the current state, shape (D, output_dim).
+            x (ndarray): Input data, shape (N, D).
+            y (ndarray): Observations, shape (N, output_dim).
+            gammak (ndarray): Posterior probabilities for the state, shape (N,).
+            otherparamk (optional): Additional parameters for the distribution.
+            reshape_weights (bool): If True, reshape weights to match dimensions.
+
+        Returns:
+            float: Negative log-likelihood for the state -- -sum_t (gamma_t * log(p(y_t | theta_t))). 
+        """
+        if reshape_weights:
+            wk = wk.reshape((self.n_features - 1, self.n_outputs))
+            wk = np.vstack((wk, np.zeros((1, self.n_outputs))))
+
+        thetak = self.dist_param(wk, x)        
+        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk)) for i in range(self.N)]
+        ll = np.sum(ll_list)
+        return -ll
+    
+    def _glmfit(self,x,wk,y,otherparamk=None, compHess=False,gammak=None,gaussianPrior=0):
+        """
+        Fits the GLM weights using gradient descent (L-BFGS-B).
+
+        Args:
+            x (ndarray): Input features, shape (N, D).
+            wk (ndarray): Initial weights, shape (D, output_dim).
+            y (ndarray): Observations, shape (N, output_dim).
+            otherparamk (optional): Additional parameters for the distribution.
+            compHess (bool): Compute the Hessian matrix (default=False).
+            gammak (ndarray): Posterior probabilities for the state, shape (N,).
+            gaussianPrior (float): Gaussian prior regularization parameter.
+
+        Returns:
+            tuple:
+                - Optimized weights, shape (D, output_dim).
+                - Emission probabilities, shape (N,).
+        """
+
+        w_flat = np.ndarray.flatten(wk[:-1,:]) # flatten weights for optimization
+        opt_log = lambda w: self.neglogli(w, x, y, gammak, otherparamk=otherparamk, reshape_weights=True) # calculate log likelihood
+
+        # simplefilter(action='ignore', category=FutureWarning) # ignore FutureWarning generated by scipy
+        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B")
+
+        wk = np.vstack((np.reshape(OptimizeResult.x,(self.n_features-1,self.n_outputs)), np.zeros((1, self.n_outputs)))) # reshape and update weights
+        thetak = self.dist_param(wk, x) # calculate theta
+        phi = self.dist_pdf(y, thetak, otherparamk=otherparamk) # calculate phi
+
+        return wk, phi
+    
+    def _updateObservations(self,y,x,w,gammas):
+        """
+        Updates the emission parameters (weights and covariances) during the M-step.
+
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            x (ndarray): Input features, shape (N, D).
+            w (ndarray): Current weights, shape (K, D, output_dim).
+            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
+
+        Returns:
+            tuple:
+                - Updated weights, shape (K, D, output_dim).
+                - Updated emission probabilities, shape (N, K).
+        """
+
+        # reshape y from vector of indices to one-hot encoded array for matrix operations in glm.fit
+        if y.ndim == 1:
+          y = y.reshape((-1, 1))
+
+        self.phi = np.zeros((self.N,self.n_states))
+
+        for zk in np.arange(self.n_states):
+            # print('zk', zk)
+            self.w[zk], self.phi[:,zk] = self._glmfit(x,w[zk],y,self.covariances[zk], 
+                                                      #compHess=self.hessian,
+                                                      gammak=gammas[:,zk],
+                                                      #gaussianPrior=self.gaussianPrior
+                                                      )
+
+            thetak = self.dist_param(self.w[zk], x)
+            residuals = y - thetak
+            self.covariances[zk] = np.cov(residuals.T)
+
+        return self.w, self.phi
+
+    def _updateInitStates(self,gammas):
+        """
+        Updates the initial state probabilities during the M-step.
+
+        Args:
+            gammas (ndarray): Posterior probabilities for the states, shape (N, K).
+
+        Returns:
+            ndarray: Updated initial state probabilities, shape (K,).
+        """
+        return np.divide(gammas[0],sum(gammas[0])) # new initial latent state probabilities
+
+
+    def _updateParams(self,y,x,gammas,beta,alpha,cs,A,phi,w,fit_init_states = False):
+        '''
+        Computes the updated parameters as part of the M-step of the EM algorithm.
+
+        '''
+
+        self.transition_matrix = self._updateTransitions(y,alpha,beta,cs,A,phi)
+
+        self.w, self.phi = self._updateObservations(y,x,w,gammas)
+
+        if fit_init_states:
+            self.pi0 = self._updateInitStates(gammas)
+
+        return self.transition_matrix, self.w, self.phi, self.pi0
+    
+
+    #----------------------------------------------------------------------#
+    # Viterbi Decoding
+
+    def _compute_likelihood(self, xt, yt):
+        """
+        Computes the likelihood of observations for all hidden states.
+
+        Args:
+            xt (ndarray): Input data for a single time step, shape (1, D).
+            yt (ndarray): Observations for a single time step, shape (1, output_dim).
+
+        Returns:
+            ndarray: Likelihood values for all states, shape (K,).
+        """
+
+        ll = []
+        for k in range(self.n_states):
+            wk = self.w[k]
+            thetakt = self.dist_param(wk, xt)
+            ll.append(self.dist_pdf(yt, thetakt, otherparamk=self.covariances[k]))
+        return np.array(ll)
+        
+
+    def mostprob_states(self, X, Y):
+        """
+        Decodes the most likely sequence of states using the Viterbi algorithm.
+
+        Args:
+            X (ndarray): Input data, shape (N, D).
+            Y (ndarray): Observations, shape (N, output_dim).
+
+        Returns:
+            ndarray: Most likely sequence of states, shape (N,).
+        """
+        n_samples = X.shape[0]
+        log_probs = np.zeros((n_samples, self.n_states))
+        prev_states = np.zeros((n_samples, self.n_states), dtype=int)
+
+        # Augment X with intercept column for prediction
+        X_augmented = np.hstack([np.ones((X.shape[0], 1)), X])  # Add intercept column
+
+        log_probs[0] = np.log(self._compute_likelihood(X_augmented[0], Y[0])) + np.log(1 / self.n_states)
+
+        for t in range(1, n_samples):
+            for j in range(self.n_states):
+                log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))
+                prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))        
+
+        states = np.zeros(n_samples, dtype=int)
+        states[-1] = np.argmax(log_probs[-1])
+        # print('log_probs shape', log_probs.shape)
+        # print('prev_states', prev_states)
+        for t in range(n_samples - 2, -1, -1):
+            # print('state', states[t+1])
+            states[t] = prev_states[t + 1, states[t + 1]]
+
+        return states
+    
+
+    #----------------------------------------------------------------------#
+    # Date generation
+
+    def generate_data(self, n_samples):
+        """
+        Generates synthetic data using the model's parameters.
+
+        Args:
+            n_samples (int): Number of data samples to generate.
+
+        Returns:
+            tuple: 
+                - X (ndarray): Generated input features, shape (N, D-1).
+                - Y (ndarray): Generated observations, shape (N, output_dim).
+                - states (ndarray): True hidden states, shape (N,).
+        """
+        X = np.random.randn(n_samples, self.n_features-1)
+        states = np.zeros(n_samples, dtype=int)
+        Y = np.zeros((n_samples, self.n_outputs))
+
+        # Generate initial state and observation
+        states[0] = np.random.choice(self.n_states)
+        X_augmented = np.hstack([X, np.ones((X.shape[0], 1))])  # Add intercept column
+        Y[0] = np.random.multivariate_normal(
+            mean=X_augmented[0] @ self.w[states[0]],
+            cov=self.covariances[states[0]]
+        )
+
+        # Generate subsequent states and observations
+        for t in range(1, n_samples):
+            states[t] = np.random.choice(self.n_states, p=self.transition_matrix[states[t - 1]])
+            Y[t] = np.random.multivariate_normal(
+                mean=X_augmented[t] @ self.w[states[t]],
+                cov=self.covariances[states[t]]
+            )
+
+        return X, Y, states
