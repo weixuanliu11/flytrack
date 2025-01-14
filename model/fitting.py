@@ -1,5 +1,5 @@
 from sklearn.metrics import adjusted_rand_score
-from numpy import np
+import numpy as np
 import ssm
 import matplotlib.pyplot as plt
 from glmhmm import GLMHMM

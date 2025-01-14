@@ -39,7 +39,7 @@ class GLMHMM:
             self.pdf = None
         
         self.transition_matrix = np.full((self.n_states, self.n_states), 1 / self.n_states) # uniformly distributed
-    
+        self.pi0 = (1/self.n_states) * np.ones((self.n_states,1))
     def dist_pdf(self, y, thetak, otherparamk=None):
         """
         Evaluates the probability density of observations for a given state.
@@ -149,7 +149,8 @@ class GLMHMM:
 
             # M STEP
             A,w,phi,pi0 = self._updateParams(y,x,self.pStates,beta,alpha,cs,A,phi,w,fit_init_states = fit_init_states)
-            print(A)
+            print('A', A)
+            print('w', w)
 
             # CHECK FOR CONVERGENCE
             self.lls[n] = ll
@@ -188,6 +189,7 @@ class GLMHMM:
         # first time bin
         pxz = np.multiply(phi[0,:],np.squeeze(pi0)) # weight t=0 observation probabilities by initial state probabilities
         cs[0] = np.sum(pxz) # normalizer
+        cs[0] += 1e-9
 
         alpha[0] = pxz/cs[0] # conditional p(z_1 | y_1)
         alpha_prior[0] = 1/self.n_states # conditional p(z_0 | y_0)
@@ -196,7 +198,9 @@ class GLMHMM:
         for i in np.arange(1,y.shape[0]):
             alpha_prior[i] = alpha[i-1]@A # propogate uncertainty forward
             pxz = np.multiply(phi[i,:],alpha_prior[i]) # joint P(y_1:t,z_t)
+            print('pxz',pxz)
             cs[i] = np.sum(pxz) # conditional p(y_t | y_1:t-1)
+            cs[i] += 1e-9
             alpha[i] = pxz/cs[i] # conditional p(z_t | y_1:t)
         # print('cs', cs)
         ll = np.sum(np.log(cs))
@@ -475,7 +479,7 @@ class GLMHMM:
         Y = np.zeros((n_samples, self.n_outputs))
 
         # Generate initial state and observation
-        states[0] = np.random.choice(self.n_states)
+        states[0] = np.random.choice(self.n_states, p=self.pi0)
         X_augmented = np.hstack([X, np.ones((X.shape[0], 1))])  # Add intercept column
         Y[0] = np.random.multivariate_normal(
             mean=X_augmented[0] @ self.w[states[0]],
