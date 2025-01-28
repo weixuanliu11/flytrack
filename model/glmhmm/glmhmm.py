@@ -2,8 +2,9 @@ import numpy as np
 from scipy.stats import multivariate_normal
 from scipy import optimize
 
+
 class GLMHMM:
-    def __init__(self, N, n_states, n_features, n_outputs, max_iter=100, em_dist="gaussian"):
+    def __init__(self, N, n_states, n_features, n_outputs, covar_epsilon, max_iter=100, em_dist="gaussian", A_dist="dirichlet"):
         """
         Initializes the GLMHMM class.
 
@@ -34,12 +35,16 @@ class GLMHMM:
             # bias <- 1
             w = np.random.uniform(low = -1, high = 1, size = (self.n_states, self.n_features - 1, self.n_outputs))
             self.w = np.pad(w, ((0, 0), (0, 1), (0, 0)), mode='constant', constant_values=1)
-            self.covariances = np.array([1e-3 * np.eye(n_outputs) for _ in range(n_states)])
+            self.covariances = np.array([covar_epsilon*np.eye(n_outputs) for _ in range(n_states)])
         else:
             self.pdf = None
+        if A_dist == "uniform":
+            self.transition_matrix = np.full((self.n_states, self.n_states), 1 / self.n_states) # uniformly distributed
+        elif A_dist == "dirichlet":
+            A = np.random.gamma(1*np.ones((self.n_states, self.n_states)) + 5*np.identity(self.n_states),1)
+            self.transition_matrix = A/np.repeat(np.reshape(np.sum(A,axis=1),(1, self.n_states)),self.n_states,0).T
+        self.pi0 = (1/self.n_states) * np.ones(self.n_states)
         
-        self.transition_matrix = np.full((self.n_states, self.n_states), 1 / self.n_states) # uniformly distributed
-        self.pi0 = (1/self.n_states) * np.ones((self.n_states,1))
     def dist_pdf(self, y, thetak, otherparamk=None):
         """
         Evaluates the probability density of observations for a given state.
@@ -52,6 +57,8 @@ class GLMHMM:
         Returns:
             ndarray: Probability density values for each time step, shape (N,).
         """
+        y = np.array(y)
+
         thetakt = []
         if self.pdf is not None:
             if y.ndim == 1:
@@ -62,9 +69,9 @@ class GLMHMM:
             return np.array(thetakt)
         else:
           raise Exception("No distribution function defined")
-        return 0
 
-    def dist_param(self, wk, x):
+
+    def dist_param(self, wk, x, augment=False):
         """
         Computes the distribution parameters (e.g., the mean) for a given state and input.
 
@@ -75,8 +82,13 @@ class GLMHMM:
         Returns:
             ndarray: Distribution parameters (e.g., mean) over time, shape (N, output_dim).
         """
-        pre_act = x @ wk
-        return (np.tanh(pre_act) + 1)/2
+        x = np.array(x)
+        
+        if augment:
+            x = np.hstack([x, np.ones((x.shape[0], 1))])
+
+        pre_act = (x @ wk + 1)/2
+        return np.tanh(pre_act)
     
     #--------------------------------------------------------------------------------#
     #EM Algorithm
@@ -101,6 +113,9 @@ class GLMHMM:
                 - Log-likelihood values for each iteration.
                 - Fitted transition matrix, weights, and initial probabilities.
         """
+        x = np.array(x)
+        y = np.array(y)
+
         x = np.hstack([x, np.ones((x.shape[0], 1))])
 
         self.lls = np.empty(maxiter)
@@ -114,12 +129,15 @@ class GLMHMM:
             thetak = self.dist_param(w[k], x) # calculate theta
             for t in range(self.N):
                 phi[t,k] = self.dist_pdf(y[t], thetak[t], otherparamk=self.covariances[k]) # calculate phi
-
+                # print('theta[t]', thetak[t])
+                # print('y[t]', y[t])
+                # print('phi[t,k]', phi[t,k])
+        # print("phi", phi)
         if sess is None:
             sess = np.array([0,self.N]) # equivalent to saying the entire data set has one session
 
         for n in range(maxiter):
-            print(f"------------------Iter{n+1}-------------------")
+            print(f"Iter{n+1}")
 
             if n == maxiter - 1:
                 print("Reach the max number of EM iterations")
@@ -149,8 +167,9 @@ class GLMHMM:
 
             # M STEP
             A,w,phi,pi0 = self._updateParams(y,x,self.pStates,beta,alpha,cs,A,phi,w,fit_init_states = fit_init_states)
-            print('A', A)
-            print('w', w)
+            # print("M step")
+            # print('A', A)
+            # print('w', w)
 
             # CHECK FOR CONVERGENCE
             self.lls[n] = ll
@@ -189,7 +208,7 @@ class GLMHMM:
         # first time bin
         pxz = np.multiply(phi[0,:],np.squeeze(pi0)) # weight t=0 observation probabilities by initial state probabilities
         cs[0] = np.sum(pxz) # normalizer
-        cs[0] += 1e-9
+        # cs[0] += 1e-9
 
         alpha[0] = pxz/cs[0] # conditional p(z_1 | y_1)
         alpha_prior[0] = 1/self.n_states # conditional p(z_0 | y_0)
@@ -198,11 +217,8 @@ class GLMHMM:
         for i in np.arange(1,y.shape[0]):
             alpha_prior[i] = alpha[i-1]@A # propogate uncertainty forward
             pxz = np.multiply(phi[i,:],alpha_prior[i]) # joint P(y_1:t,z_t)
-            print('pxz',pxz)
             cs[i] = np.sum(pxz) # conditional p(y_t | y_1:t-1)
-            cs[i] += 1e-9
             alpha[i] = pxz/cs[i] # conditional p(z_t | y_1:t)
-        # print('cs', cs)
         ll = np.sum(np.log(cs))
 
         return ll,alpha,alpha_prior,cs
@@ -232,11 +248,10 @@ class GLMHMM:
         beta[-1] = 1 # take beta(z_N) = 1
 
         # backward pass for remaining time bins
-        for i in np.arange(y.shape[0]-2,-1,-1):
+        for i in np.arange(self.N-2,-1,-1):
             beta_prior = np.multiply(beta[i+1],phi[i+1,:]) # propogate uncertainty backward
-            beta[i] = (A@beta_prior)/cs[i+1]
-            # print('cs', cs[i+1])
-
+            # beta[i] = ((A@beta_prior)+1e-9)/cs[i+1]
+            beta[i] = ((A@beta_prior))/cs[i+1]
         pBack = np.multiply(alpha,beta) # posterior after backward pass -> alpha_hat(z_n)*beta_hat(z_n)
         zhatBack = np.argmax(pBack,axis=1) # decode from likelihoods only
 
@@ -357,9 +372,7 @@ class GLMHMM:
         for zk in np.arange(self.n_states):
             # print('zk', zk)
             self.w[zk], self.phi[:,zk] = self._glmfit(x,w[zk],y,self.covariances[zk], 
-                                                      #compHess=self.hessian,
                                                       gammak=gammas[:,zk],
-                                                      #gaussianPrior=self.gaussianPrior
                                                       )
 
             thetak = self.dist_param(self.w[zk], x)
@@ -431,6 +444,9 @@ class GLMHMM:
         Returns:
             ndarray: Most likely sequence of states, shape (N,).
         """
+        X = np.array(X)
+        Y = np.array(Y)
+
         n_samples = X.shape[0]
         log_probs = np.zeros((n_samples, self.n_states))
         prev_states = np.zeros((n_samples, self.n_states), dtype=int)
@@ -449,10 +465,7 @@ class GLMHMM:
 
         states = np.zeros(n_samples, dtype=int)
         states[-1] = np.argmax(log_probs[-1])
-        # print('log_probs shape', log_probs.shape)
-        # print('prev_states', prev_states)
         for t in range(n_samples - 2, -1, -1):
-            # print('state', states[t+1])
             states[t] = prev_states[t + 1, states[t + 1]]
 
         return states
@@ -461,7 +474,7 @@ class GLMHMM:
     #----------------------------------------------------------------------#
     # Date generation
 
-    def generate_data(self, n_samples):
+    def generate_data(self, n_samples, X=None):
         """
         Generates synthetic data using the model's parameters.
 
@@ -474,7 +487,8 @@ class GLMHMM:
                 - Y (ndarray): Generated observations, shape (N, output_dim).
                 - states (ndarray): True hidden states, shape (N,).
         """
-        X = np.random.randn(n_samples, self.n_features-1)
+        if X is None:
+            X = np.random.randn(n_samples, self.n_features-1)
         states = np.zeros(n_samples, dtype=int)
         Y = np.zeros((n_samples, self.n_outputs))
 
@@ -482,7 +496,7 @@ class GLMHMM:
         states[0] = np.random.choice(self.n_states, p=self.pi0)
         X_augmented = np.hstack([X, np.ones((X.shape[0], 1))])  # Add intercept column
         Y[0] = np.random.multivariate_normal(
-            mean=X_augmented[0] @ self.w[states[0]],
+            mean=self.dist_param(self.w[states[0]], X_augmented[0]),
             cov=self.covariances[states[0]]
         )
 
@@ -490,7 +504,7 @@ class GLMHMM:
         for t in range(1, n_samples):
             states[t] = np.random.choice(self.n_states, p=self.transition_matrix[states[t - 1]])
             Y[t] = np.random.multivariate_normal(
-                mean=X_augmented[t] @ self.w[states[t]],
+                mean=self.dist_param(self.w[states[t]], X_augmented[t]),
                 cov=self.covariances[states[t]]
             )
 

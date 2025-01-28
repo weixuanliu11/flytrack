@@ -1,7 +1,21 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import sys
+
+sys.path.append('/data/users/weixuan/work')
 from config import colors
+
+import numpy as np
+from collections import Counter
+
+# find the last non-NaN element(usually used on fitting lls)
+def last_non_nan(array):
+    non_nan_indices = np.where(~np.isnan(array))[0]
+    if len(non_nan_indices) == 0:
+        return None  
+    return array[non_nan_indices[-1]]
+
 
 def VisTrajStates(test_trajectories, most_likely_states_list):
     assert(len(test_trajectories) == len(most_likely_states_list))
@@ -61,5 +75,19 @@ def adda2obs(obs, action):
   modified_array1 = np.vstack((zeros_row, action[:-1]))
   result_array = np.hstack((obs, modified_array1))
   return result_array
+
+
+def find_consensus_voting(clusterings):
+    """Find a consensus clustering by majority voting after relabeling."""
+    n_points = len(clusterings[0])
+    labels_per_point = np.array(clusterings)
+    
+    consensus = []
+    for point in range(n_points):
+        label_votes = labels_per_point[:, point]
+        consensus_label = Counter(label_votes).most_common(1)[0][0]
+        consensus.append(consensus_label)
+    
+    return np.array(consensus)
 
 
