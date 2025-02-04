@@ -32,7 +32,7 @@ def gen_true_param(N, K, D, dim_output, w_low = -1, w_high=1, A_true=None, w_tru
     pi0_true = model_true.pi0
 
     X, Y, states = model_true.generate_data(N)
-    return X, Y, states, A_true, w_true, pi0_true
+    return X, Y, states, A_true, w_true, pi0_true, model_true
 
 # Finding the optimal number of states using cross validation
 def OptStateCV_traj(train_trajectories, traj_metric=None, model_name = "hmm", states_cands=[1,2,3,4,5], n_folds=6, inpts=None, num_init=3, obs_dist="gaussian", N_iters=100, verbose=False):
