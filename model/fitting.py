@@ -6,6 +6,211 @@ from glmhmm import GLMHMM
 from util import last_non_nan
 
 
+import json
+import os
+import numpy as np
+
+
+
+def metric_comp(storage_all, colormap = "cividis"):
+    metrics = ["A element", "A vector", "w element", "w vector", "accuracy", "precision", "recall", "f1", "match rate"]
+
+    fig, axes = plt.subplots(len(metrics), 3, figsize=(12, 36))
+    fig.tight_layout(pad=4.0)
+
+    # Iterate through metrics and subplots
+    for idx, metric in enumerate(metrics):
+        # Extract data for the current metric
+        true2init = storage_all[:, :, 0, idx]
+        true2pred = storage_all[:, :, 1, idx]
+
+        # true vs true fit(state seq only) at place index 4, 5, 6, 7
+        accuracy_true2tf = storage_all[:, :, 2, 4]
+        precision_true2tf = storage_all[:, :, 2, 5]
+        recall_true2tf = storage_all[:, :, 2, 6]
+        f1_true2tf = storage_all[:, :, 2, 7]
+
+        # Compute vmin and vmax for the current row (shared between true2init and true2pred)
+        vmin = min(true2init.min(), true2pred.min())
+        vmax = max(true2init.max(), true2pred.max())
+
+        if idx == 1:
+            true2true = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2true.min())
+            vmax = max(vmax, true2true.max())
+
+        # Plot true-to-init
+        ax_init = axes[idx, 0]
+        c1 = ax_init.imshow(true2init, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+        ax_init.set_title(f"{metric} - True vs Init")
+        fig.colorbar(c1, ax=ax_init)
+        # Add text annotations for each value
+        for i in range(true2init.shape[0]):
+            for j in range(true2init.shape[1]):
+                ax_init.text(j, i, f"{true2init[i, j]:.2f}", ha='center', va='center', color='white')
+
+        # Plot true-to-pred
+        ax_pred = axes[idx, 1]
+        c2 = ax_pred.imshow(true2pred, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+        ax_pred.set_title(f"{metric} - True vs Pred")
+        fig.colorbar(c2, ax=ax_pred)
+        # Add text annotations for each value
+        for i in range(true2pred.shape[0]):
+            for j in range(true2pred.shape[1]):
+                ax_pred.text(j, i, f"{true2pred[i, j]:.2f}", ha='center', va='center', color='white')
+
+        # Plot true-to-true
+        if idx == 1:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(true2true, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            ax_pred.set_title(f"{metric} - True vs True")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(true2true.shape[0]):
+                for j in range(true2true.shape[1]):
+                    ax_pred.text(j, i, f"{true2true[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 4:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(accuracy_true2tf, aspect='auto', cmap=colormap, vmin=np.min(accuracy_true2tf), vmax=np.max(accuracy_true2tf))
+            ax_pred.set_title(f"{metric} - True vs True_fit")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(accuracy_true2tf.shape[0]):
+                for j in range(accuracy_true2tf.shape[1]):
+                    ax_pred.text(j, i, f"{accuracy_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 5:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(precision_true2tf, aspect='auto', cmap=colormap, vmin=np.min(precision_true2tf), vmax=np.max(precision_true2tf))
+            ax_pred.set_title(f"{metric} - True vs True_fit")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(precision_true2tf.shape[0]):
+                for j in range(precision_true2tf.shape[1]):
+                    ax_pred.text(j, i, f"{precision_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 6:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(recall_true2tf, aspect='auto', cmap=colormap, vmin=np.min(recall_true2tf), vmax=np.max(recall_true2tf))
+            ax_pred.set_title(f"{metric} - True vs True_fit")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(recall_true2tf.shape[0]):
+                for j in range(recall_true2tf.shape[1]):
+                    ax_pred.text(j, i, f"{recall_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 7:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(f1_true2tf, aspect='auto', cmap=colormap, vmin=np.min(f1_true2tf), vmax=np.max(f1_true2tf))
+            ax_pred.set_title(f"{metric} - True vs True_fit")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(f1_true2tf.shape[0]):
+                for j in range(f1_true2tf.shape[1]):
+                    ax_pred.text(j, i, f"{f1_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
+
+        
+                
+    # Add overall figure title
+    fig.suptitle("Metric Visualization", fontsize=16, y=1.02)
+
+    # Display the plots
+    plt.show()
+
+
+def load_models(N, K, D, dim_output):
+    """Load all stored models for a given setting."""
+    
+    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
+    
+    # Load JSON data
+    if not os.path.exists(JSON_FILE):
+        print("No saved models found.")
+        return None
+    
+    with open(JSON_FILE, "r") as f:
+        data = json.load(f)
+
+    if key not in data:
+        print(f"No models found for {key}")
+        return None
+    
+    return data[key]
+
+def train_and_store_model(N, K, D, dim_output, testN = 3000):
+    """Train a model and store its parameters in JSON."""
+    
+    # Generate true model and data
+    X, Y, _, A_true, w_true, pi0_true, m_true = gen_true_param(N, K, D, dim_output)
+    X_test, Y_test, true_states_seq = m_true.generate_data(testN)
+    true_states_seq_fit = m_true.mostprob_states(X_test, Y_test).astype(int)
+
+    # Train model
+    m = GLMHMM(N, K, D, dim_output, 1.0)
+
+    A_init=m.transition_matrix.copy()
+    w_init=m.w.copy()
+    pi0_init  = m.pi0.copy()
+    init_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+
+    lls_pred, A_pred, w_pred, pi0_pred = m.fit(Y, X, np.copy(A_init), np.copy(w_init), pi0=np.copy(pi0_init), fit_init_states=True)
+    pred_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+
+    # Save the trained model's results
+    save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
+         A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit)
+   
+  
+JSON_FILE = "metric_testing_model_data.json"  # Path to store results
+
+def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
+    A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit):
+    """Save trained model parameters to JSON, appending to existing settings if present."""
+    
+    # Convert NumPy arrays to lists for JSON storage
+    model_data = {
+        "A_true": A_true.tolist(),
+        "w_true": w_true.tolist(),
+        "pi0_true": pi0_true.tolist(),
+        "true_states_seq": true_states_seq.tolist(),
+        "true_states_seq_fit": true_states_seq_fit.tolist(),
+
+        "A_init": A_init.tolist(),
+        "w_init": w_init.tolist(),
+        "pi0_init": pi0_init.tolist(),
+        "init_states_seq": init_states_seq.tolist(),
+
+        "A_pred": A_pred.tolist(),
+        "w_pred": w_pred.tolist(),
+        "pi0_pred": pi0_pred.tolist(),
+        "pred_states_seq": pred_states_seq.tolist(),
+    }
+
+    # Load existing JSON data
+    if os.path.exists(JSON_FILE):
+        with open(JSON_FILE, "r") as f:
+            data = json.load(f)
+    else:
+        data = {}
+
+    # Create a unique key based on (N, K, D, dim_output)
+    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
+
+    # Append new model data to existing key or create a new entry
+    if key in data:
+        data[key].append(model_data)  # Append new model
+    else:
+        data[key] = [model_data]  # First model for this setting
+
+    # Save back to JSON
+    with open(JSON_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+    print(f"Saved model under {key} in {JSON_FILE}")
+
+
+
 # set up a true glmhmm model and generate X, Y, and state seq from it
 def gen_true_param(N, K, D, dim_output, w_low = -1, w_high=1, A_true=None, w_true=None, pi0_true=None):
     div_pt = np.linspace(w_low, w_high, K+1)

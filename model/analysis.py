@@ -5,6 +5,142 @@ import seaborn as sns
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from scipy.optimize import linear_sum_assignment
+from fitting import load_models
+
+import numpy as np
+import json
+import os
+
+def analyze_stored_models(N, K, D, dim_output, verbose=False):
+    """Load and compare all stored models for a given setting."""
+
+    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
+    stored_models = load_models(N, K, D, dim_output)
+    
+    if stored_models is None:
+        return None
+
+    num_models = len(stored_models)
+
+    print(f"Analyzing {num_models} models for {key}")
+
+    # Initialize storage for metrics
+    storage_all = np.zeros((num_models, num_models, 3, 9))  # 2: init-0, pred-1 # (true, pred, true to init/pred/true, metric)
+
+    # Loop through all pairs of models for comparison
+    for true_i in range(num_models):
+        for pred_i in range(num_models):
+            # Extract the true model parameters
+            true_states_seq = np.array(stored_models[true_i]["true_states_seq"])
+            true_states_seq_fit = np.array(stored_models[true_i]["true_states_seq_fit"])
+            A_true = np.array(stored_models[true_i]["A_true"])
+            w_true = np.array(stored_models[true_i]["w_true"])
+
+            # Extract the predicted model init parameters
+            init_states_seq = np.array(stored_models[pred_i]["init_states_seq"])
+            A_init = np.array(stored_models[pred_i]['A_init'])
+            w_init = np.array(stored_models[pred_i]['w_init'])
+
+            # Extract the predicted model parameters
+            pred_states_seq = np.array(stored_models[pred_i]["pred_states_seq"])
+            A_pred = np.array(stored_models[pred_i]["A_pred"])
+            w_pred = np.array(stored_models[pred_i]["w_pred"])
+
+            # Extract the 2nd model parameters
+            true_states_seq2 = np.array(stored_models[pred_i]["true_states_seq"])
+            A_true2 = np.array(stored_models[pred_i]["A_true"])
+
+            # Align state sequences using permutation
+            perm_init = find_permutation(init_states_seq, true_states_seq)
+            init_states_perm = np.array([perm_init[init_states_seq[idx]] for idx in range(len(init_states_seq))])
+            A_perm_init = A_init[np.ix_(perm_init, perm_init)]
+            w_perm_init = w_init[perm_init, :, :]
+
+            perm = find_permutation(pred_states_seq, true_states_seq)
+            pred_states_perm = np.array([perm[pred_states_seq[idx]] for idx in range(len(true_states_seq))])
+            A_perm = A_pred[np.ix_(perm, perm)]
+            w_perm = w_pred[perm, :, :]
+
+            perm2 = find_permutation(true_states_seq2, true_states_seq)
+            A_perm2 = A_true2[np.ix_(perm2, perm2)]
+
+            # vis
+            if verbose:
+                if true_i == pred_i:
+                    plt.figure(figsize=(12, 4))
+                    plt.title(f"true{true_i}, pred{pred_i}")
+                    plt.plot(range(200), pred_states_perm[:200], 'red', '--o', label='pred')
+                    plt.plot(range(200), true_states_seq[:200], 'blue', '-o', label = 'true')
+                    plt.plot(range(200), true_states_seq_fit[:200], 'gray', '--', label = "true_fit")
+                    plt.legend()
+
+            # Compute Metrics
+            # Matrix comparison
+            A_true2true_vector = matrix_comp(A_true, A_perm2, metric="vector")
+
+            A_true2pred_element = matrix_comp(A_true, A_perm, metric="element") #0
+            A_true2pred_vector = matrix_comp(A_true, A_perm, metric="vector") #1
+            A_true2init_element = matrix_comp(A_true, A_perm_init, metric="element")
+            A_true2init_vector = matrix_comp(A_true, A_perm_init, metric="vector")
+
+            w_true2pred_element = matrix_comp(w_true, w_perm, metric="element") #2
+            w_true2pred_vector = matrix_comp(w_true, w_perm, metric="vector") #3
+            w_true2init_element = matrix_comp(w_true, w_perm_init, metric="element")
+            w_true2init_vector = matrix_comp(w_true, w_perm_init, metric="vector")
+
+            # State seq evaluation
+            res_map_true2tf = evaluate_classification(true_states_seq_fit, true_states_seq)
+            accuracy_true2tf = res_map_true2tf['accuracy']
+            precision_true2tf = res_map_true2tf['precision']
+            recall_true2tf = res_map_true2tf['recall']
+            f1_true2tf = res_map_true2tf['f1_score']
+
+            res_map_true2pred = evaluate_classification(pred_states_perm, true_states_seq)
+            accuracy_true2pred = res_map_true2pred['accuracy'] #4
+            precision_true2pred = res_map_true2pred['precision'] #5
+            recall_true2pred = res_map_true2pred['recall'] #6
+            f1_true2pred = res_map_true2pred['f1_score'] #7
+
+            res_map_true2init = evaluate_classification(init_states_perm, true_states_seq)
+            accuracy_true2init = res_map_true2init['accuracy']
+            precision_true2init = res_map_true2init['precision']
+            recall_true2init = res_map_true2init['recall']
+            f1_true2init = res_map_true2init['f1_score']
+
+            # matching rate of state seq
+            mat_rate_true2pred = calculate_match_rate(pred_states_perm, true_states_seq) #8
+            mat_rate_true2init = calculate_match_rate(init_states_perm, true_states_seq)
+
+            # Storage
+            # true vs init
+            storage_all[true_i, pred_i, 0] = np.array([A_true2init_element, A_true2init_vector, w_true2init_element, w_true2init_vector, \
+                accuracy_true2init, precision_true2init, recall_true2init, f1_true2init, mat_rate_true2init])
+
+            # true vs pred
+            storage_all[true_i, pred_i, 1] = np.array([A_true2pred_element, A_true2pred_vector, w_true2pred_element, w_true2pred_vector, \
+                accuracy_true2pred, precision_true2pred, recall_true2pred, f1_true2pred, mat_rate_true2pred])
+
+            # true vs true (A only)
+            storage_all[true_i, pred_i, 2, 1] = A_true2true_vector
+
+            # true vs true fit(state seq only) at place index 4, 5, 6, 7
+            if true_i == pred_i:
+                storage_all[true_i, pred_i, 2, 4] = accuracy_true2tf
+                storage_all[true_i, pred_i, 2, 5] = precision_true2tf
+                storage_all[true_i, pred_i, 2, 6] = recall_true2tf
+                storage_all[true_i, pred_i, 2, 7] = f1_true2tf
+            
+    # Save analysis results
+    analysis_file = "metric_testing_analysis_results.json"
+    analysis_results = {key: storage_all.tolist()}
+
+    with open(analysis_file, "w") as f:
+        json.dump(analysis_results, f, indent=4)
+
+    print(f"Analysis saved to {analysis_file}")
+    return storage_all
+
+
 
 # State matching using A or w
 def permute_states(M,method='self-transitions',param='transitions',order=None,ix=None):
