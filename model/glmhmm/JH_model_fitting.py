@@ -1,4 +1,4 @@
-# Usage: python JH_model_fitting.py /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/noisy3x5b5_observability_test.pkl 4 1
+# Usage: python JH_model_fitting.py /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/noisy3x5b5.pkl 4 1
 import glmhmm 
 import numpy as np
 import sys
@@ -21,9 +21,6 @@ print(f"now fitting {K} state on {model_name}, {dataset} seed {seed}")
 out_fname = f"HMMGLM_seed{model_name}_randSeed{seed}_K{K}.npz"
 out_path = os.path.join(eval_folder, out_fname)
 print(f"results will be saved to {out_path}")
-# obs_pkls = ['/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/noisy3x5b5_observability_test.pkl',
-#             '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_17519_6aca800e09d4942c5d296ae7157fcf8b/noisy3x5b5_observability_test.pkl']
-# eval_pkls = [obs_pkl.replace("_observability_test.pkl", ".pkl") for obs_pkl in obs_pkls]
 
 # load pkl file
 import pickle
@@ -39,9 +36,6 @@ with open(obs_pkl, 'rb') as f_handle:
 # with open(eval_pkls[0], 'rb') as f_handle:
 with open(eval_pkl, 'rb') as f_handle:
     # based on open_loop_perturbation.py
-    # dataset = 'noisy3x5b5'
-    # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/'
-    # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_17519_6aca800e09d4942c5d296ae7157fcf8b/'
     selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
                                             n_episodes_home=240,
                                             n_episodes_other=240,  
@@ -95,8 +89,6 @@ print(EV_no_nan.shape)
 EV_no_nan['time'] = EV_no_nan['time'].round(2)
 EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
 print(EV_no_nan.shape)
-# EV_no_nan.sort_values(by=['ep_idx', 'time'], inplace=True)
-# EV_no_nan.groupby('ep_idx')['time'].diff().value_counts() # checks out
 
 # Preprocess action data
 # get speed and acceleration
@@ -191,8 +183,6 @@ start = time.time()
 lls_pred,A_pred,w_pred,pi0_pred = m.fit(Y,X,A_init,w_init, pi0=pi0_init, fit_init_states=True, 
                                         sess=None)
 print('time taken:', time.time()-start)
-
-# outfile=f"/src/tools/flytrack/model/glmhmm/seed14421_no_sess_randSeed3_K4.npz"
 
 np.savez(out_path, A_init=A_init, w_init=w_init, pi0_init=pi0_init,
          A_pred=A_pred, w_pred=w_pred, pi0_pred=pi0_pred, train_idx=train_idx, test_idx=test_idx,
