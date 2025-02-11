@@ -35,9 +35,19 @@ def metric_comp(storage_all, colormap = "cividis"):
         vmax = max(true2init.max(), true2pred.max())
 
         if idx == 1:
-            true2true = storage_all[:, :, 2, idx]
-            vmin = min(vmin, true2true.min())
-            vmax = max(vmax, true2true.max())
+            true2trueA = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2trueA.min())
+            vmax = max(vmax, true2trueA.max())
+        if idx == 2:
+            true2truew_element = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2truew_element.min())
+            vmax = max(vmax, true2truew_element.max())
+
+        if idx == 3:
+            true2truew_vector = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2truew_vector.min())
+            vmax = max(vmax, true2truew_vector.max())
+
 
         # Plot true-to-init
         ax_init = axes[idx, 0]
@@ -62,13 +72,33 @@ def metric_comp(storage_all, colormap = "cividis"):
         # Plot true-to-true
         if idx == 1:
             ax_pred = axes[idx, 2]
-            c2 = ax_pred.imshow(true2true, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            c2 = ax_pred.imshow(true2trueA, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
             ax_pred.set_title(f"{metric} - True vs True")
             fig.colorbar(c2, ax=ax_pred)
             # Add text annotations for each value
-            for i in range(true2true.shape[0]):
-                for j in range(true2true.shape[1]):
-                    ax_pred.text(j, i, f"{true2true[i, j]:.2f}", ha='center', va='center', color='white')
+            for i in range(true2trueA.shape[0]):
+                for j in range(true2trueA.shape[1]):
+                    ax_pred.text(j, i, f"{true2trueA[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 2:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(true2truew_element, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            ax_pred.set_title(f"{metric} - True vs True")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(true2truew_element.shape[0]):
+                for j in range(true2truew_element.shape[1]):
+                    ax_pred.text(j, i, f"{true2truew_element[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 3:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(true2truew_vector, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            ax_pred.set_title(f"{metric} - True vs True")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(true2truew_vector.shape[0]):
+                for j in range(true2truew_vector.shape[1]):
+                    ax_pred.text(j, i, f"{true2truew_vector[i, j]:.2f}", ha='center', va='center', color='white')
 
         if idx == 4:
             ax_pred = axes[idx, 2]
@@ -119,17 +149,17 @@ def metric_comp(storage_all, colormap = "cividis"):
     plt.show()
 
 
-def load_models(N, K, D, dim_output):
+def load_models(N, K, D, dim_output, filename="metric_testing_model_data.json"):
     """Load all stored models for a given setting."""
     
     key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
     
     # Load JSON data
-    if not os.path.exists(JSON_FILE):
+    if not os.path.exists(filename):
         print("No saved models found.")
         return None
     
-    with open(JSON_FILE, "r") as f:
+    with open(filename, "r") as f:
         data = json.load(f)
 
     if key not in data:
@@ -138,11 +168,11 @@ def load_models(N, K, D, dim_output):
     
     return data[key]
 
-def train_and_store_model(N, K, D, dim_output, testN = 3000):
+def train_and_store_model(N, K, D, dim_output, testN = 3000, A_true=None, w_true=None, pi0_true=None, filename="metric_testing_model_data.json"):
     """Train a model and store its parameters in JSON."""
     
     # Generate true model and data
-    X, Y, _, A_true, w_true, pi0_true, m_true = gen_true_param(N, K, D, dim_output)
+    X, Y, _, A_true, w_true, pi0_true, m_true = gen_true_param(N, K, D, dim_output, A_true=A_true, w_true=w_true, pi0_true=pi0_true)
     X_test, Y_test, true_states_seq = m_true.generate_data(testN)
     true_states_seq_fit = m_true.mostprob_states(X_test, Y_test).astype(int)
 
@@ -159,13 +189,11 @@ def train_and_store_model(N, K, D, dim_output, testN = 3000):
 
     # Save the trained model's results
     save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
-         A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit)
+         A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit, filename=filename)
    
-  
-JSON_FILE = "metric_testing_model_data.json"  # Path to store results
 
 def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
-    A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit):
+    A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit, filename="metric_testing_model_data.json"):
     """Save trained model parameters to JSON, appending to existing settings if present."""
     
     # Convert NumPy arrays to lists for JSON storage
@@ -188,8 +216,8 @@ def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_state
     }
 
     # Load existing JSON data
-    if os.path.exists(JSON_FILE):
-        with open(JSON_FILE, "r") as f:
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
             data = json.load(f)
     else:
         data = {}
@@ -204,10 +232,10 @@ def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_state
         data[key] = [model_data]  # First model for this setting
 
     # Save back to JSON
-    with open(JSON_FILE, "w") as f:
+    with open(filename, "w") as f:
         json.dump(data, f, indent=4)
 
-    print(f"Saved model under {key} in {JSON_FILE}")
+    print(f"Saved model under {key} in {filename}")
 
 
 

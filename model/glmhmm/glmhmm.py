@@ -444,31 +444,59 @@ class GLMHMM:
         Returns:
             ndarray: Most likely sequence of states, shape (N,).
         """
-        X = np.array(X)
-        Y = np.array(Y)
+        # X = np.array(X)
+        # Y = np.array(Y)
 
-        n_samples = X.shape[0]
-        log_probs = np.zeros((n_samples, self.n_states))
-        prev_states = np.zeros((n_samples, self.n_states), dtype=int)
+        # n_samples = X.shape[0]
+        # log_probs = np.zeros((n_samples, self.n_states))
+        # prev_states = np.zeros((n_samples, self.n_states), dtype=int)
 
-        # Augment X with intercept column for prediction
-        X_augmented = np.hstack([np.ones((X.shape[0], 1)), X])  # Add intercept column
+        # # Augment X with intercept column for prediction
+        # X_augmented = np.hstack([np.ones((X.shape[0], 1)), X])  # Add intercept column
 
-        log_probs[0] = np.log(self._compute_likelihood(X_augmented[0], Y[0])) + np.log(1 / self.n_states)
+        # log_probs[0] = np.log(self._compute_likelihood(X_augmented[0], Y[0])) + np.log(1 / self.n_states)
 
-        for t in range(1, n_samples):
-            for j in range(self.n_states):
-                log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
-                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))
-                prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
-                                  np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))        
+        # for t in range(1, n_samples):
+        #     for j in range(self.n_states):
+        #         log_probs[t, j] = np.max(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+        #                           np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))
+        #         prev_states[t, j] = np.argmax(log_probs[t - 1] + np.log(self.transition_matrix[:, j]) + \
+        #                           np.log(self._compute_likelihood(X_augmented[t], Y[t])[j]))        
 
-        states = np.zeros(n_samples, dtype=int)
-        states[-1] = np.argmax(log_probs[-1])
-        for t in range(n_samples - 2, -1, -1):
-            states[t] = prev_states[t + 1, states[t + 1]]
+        # states = np.zeros(n_samples, dtype=int)
+        # states[-1] = np.argmax(log_probs[-1])
+        # for t in range(n_samples - 2, -1, -1):
+        #     states[t] = prev_states[t + 1, states[t + 1]]
+
+        # return states
+
+        X = np.hstack([X, np.ones((X.shape[0], 1))])  # Augment X with bias term
+        N = X.shape[0]  # Number of time steps
+        log_prob = np.zeros((N, self.n_states))  # Log probabilities for each state
+        prev_state = np.zeros((N, self.n_states), dtype=int)  # Backtrack pointers
+
+        # Compute log-likelihood for first time step
+        log_prob[0] = np.log(self.pi0 + 1e-10) + np.log(self._compute_likelihood(X[0], Y[0]) + 1e-10)
+
+        # Viterbi forward pass
+        for t in range(1, N):
+            likelihood = np.log(self._compute_likelihood(X[t], Y[t]) + 1e-10)
+
+            for k in range(self.n_states):
+                transition_probs = log_prob[t - 1] + np.log(self.transition_matrix[:, k] + 1e-10)
+                best_prev_state = np.argmax(transition_probs)
+                log_prob[t, k] = transition_probs[best_prev_state] + likelihood[k]
+                prev_state[t, k] = best_prev_state
+
+        # Backtrack to find most probable sequence
+        states = np.zeros(N, dtype=int)
+        states[-1] = np.argmax(log_prob[-1])  # Start from the most probable last state
+
+        for t in range(N - 2, -1, -1):
+            states[t] = prev_state[t + 1, states[t + 1]]
 
         return states
+
     
 
     #----------------------------------------------------------------------#

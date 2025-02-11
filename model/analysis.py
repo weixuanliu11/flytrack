@@ -11,11 +11,11 @@ import numpy as np
 import json
 import os
 
-def analyze_stored_models(N, K, D, dim_output, verbose=False):
+def analyze_stored_models(N, K, D, dim_output, verbose=False, filename="metric_testing_model_data.json"):
     """Load and compare all stored models for a given setting."""
 
     key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
-    stored_models = load_models(N, K, D, dim_output)
+    stored_models = load_models(N, K, D, dim_output, filename=filename)
     
     if stored_models is None:
         return None
@@ -43,12 +43,14 @@ def analyze_stored_models(N, K, D, dim_output, verbose=False):
 
             # Extract the predicted model parameters
             pred_states_seq = np.array(stored_models[pred_i]["pred_states_seq"])
+            pred_states_seq_fit = np.array(stored_models[pred_i]["true_states_seq_fit"])
             A_pred = np.array(stored_models[pred_i]["A_pred"])
             w_pred = np.array(stored_models[pred_i]["w_pred"])
 
             # Extract the 2nd model parameters
             true_states_seq2 = np.array(stored_models[pred_i]["true_states_seq"])
             A_true2 = np.array(stored_models[pred_i]["A_true"])
+            w_true2 = np.array(stored_models[pred_i]["w_true"])
 
             # Align state sequences using permutation
             perm_init = find_permutation(init_states_seq, true_states_seq)
@@ -63,16 +65,51 @@ def analyze_stored_models(N, K, D, dim_output, verbose=False):
 
             perm2 = find_permutation(true_states_seq2, true_states_seq)
             A_perm2 = A_true2[np.ix_(perm2, perm2)]
+            w_perm2 = w_true2[perm2, :, :]
 
             # vis
             if verbose:
+                timebin=200
+                cmap = 'viridis'
+                vmin, vmax = 0, np.max(true_states_seq)
+
                 if true_i == pred_i:
                     plt.figure(figsize=(12, 4))
                     plt.title(f"true{true_i}, pred{pred_i}")
-                    plt.plot(range(200), pred_states_perm[:200], 'red', '--o', label='pred')
-                    plt.plot(range(200), true_states_seq[:200], 'blue', '-o', label = 'true')
-                    plt.plot(range(200), true_states_seq_fit[:200], 'gray', '--', label = "true_fit")
+                    plt.plot(range(200), pred_states_perm[:200], 'red', label='pred')
+                    plt.plot(range(200), true_states_seq[:200], 'blue', label = 'true')
+                    plt.plot(range(200), true_states_seq_fit[:200], 'gray', label = "true_fit")
                     plt.legend()
+
+
+                    plt.figure(figsize=(8, 6))
+
+                    # First subplot
+                    plt.subplot(311)
+                    plt.imshow(true_states_seq[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+                    plt.xlim(0, timebin)
+                    plt.ylabel("$z_{\\mathrm{true}}$")
+                    plt.yticks([])
+
+                    # Second subplot
+                    plt.subplot(312)
+                    plt.imshow(true_states_seq_fit[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+                    plt.xlim(0, timebin)
+                    plt.ylabel("$z_{\\mathrm{true fit}}$")
+                    plt.yticks([])
+
+                    # Third subplot (New Addition)
+                    plt.subplot(313)
+                    plt.imshow(pred_states_perm[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)  # Replace `extra_data` with your third data source
+                    plt.xlim(0, timebin)
+                    plt.ylabel("$z_{\\mathrm{pred}}$")
+                    plt.yticks([])
+                    plt.xlabel("time")
+
+                    plt.tight_layout()
+
+                    plt.show()
+
 
             # Compute Metrics
             # Matrix comparison
@@ -83,25 +120,28 @@ def analyze_stored_models(N, K, D, dim_output, verbose=False):
             A_true2init_element = matrix_comp(A_true, A_perm_init, metric="element")
             A_true2init_vector = matrix_comp(A_true, A_perm_init, metric="vector")
 
+            w_true2true_element = matrix_comp(w_true, w_perm2, metric="element")
+            w_true2true_vector = matrix_comp(w_true, w_perm2, metric="vector")
+
             w_true2pred_element = matrix_comp(w_true, w_perm, metric="element") #2
             w_true2pred_vector = matrix_comp(w_true, w_perm, metric="vector") #3
             w_true2init_element = matrix_comp(w_true, w_perm_init, metric="element")
             w_true2init_vector = matrix_comp(w_true, w_perm_init, metric="vector")
 
             # State seq evaluation
-            res_map_true2tf = evaluate_classification(true_states_seq_fit, true_states_seq)
+            res_map_true2tf = evaluate_classification(true_states_seq, pred_states_seq_fit)
             accuracy_true2tf = res_map_true2tf['accuracy']
             precision_true2tf = res_map_true2tf['precision']
             recall_true2tf = res_map_true2tf['recall']
             f1_true2tf = res_map_true2tf['f1_score']
 
-            res_map_true2pred = evaluate_classification(pred_states_perm, true_states_seq)
+            res_map_true2pred = evaluate_classification(true_states_seq, pred_states_perm)
             accuracy_true2pred = res_map_true2pred['accuracy'] #4
             precision_true2pred = res_map_true2pred['precision'] #5
             recall_true2pred = res_map_true2pred['recall'] #6
             f1_true2pred = res_map_true2pred['f1_score'] #7
 
-            res_map_true2init = evaluate_classification(init_states_perm, true_states_seq)
+            res_map_true2init = evaluate_classification(true_states_seq, init_states_perm)
             accuracy_true2init = res_map_true2init['accuracy']
             precision_true2init = res_map_true2init['precision']
             recall_true2init = res_map_true2init['recall']
@@ -123,12 +163,14 @@ def analyze_stored_models(N, K, D, dim_output, verbose=False):
             # true vs true (A only)
             storage_all[true_i, pred_i, 2, 1] = A_true2true_vector
 
+            storage_all[true_i, pred_i, 2, 2] = w_true2true_element
+            storage_all[true_i, pred_i, 2, 3] = w_true2true_vector
+
             # true vs true fit(state seq only) at place index 4, 5, 6, 7
-            if true_i == pred_i:
-                storage_all[true_i, pred_i, 2, 4] = accuracy_true2tf
-                storage_all[true_i, pred_i, 2, 5] = precision_true2tf
-                storage_all[true_i, pred_i, 2, 6] = recall_true2tf
-                storage_all[true_i, pred_i, 2, 7] = f1_true2tf
+            storage_all[true_i, pred_i, 2, 4] = accuracy_true2tf
+            storage_all[true_i, pred_i, 2, 5] = precision_true2tf
+            storage_all[true_i, pred_i, 2, 6] = recall_true2tf
+            storage_all[true_i, pred_i, 2, 7] = f1_true2tf
             
     # Save analysis results
     analysis_file = "metric_testing_analysis_results.json"
