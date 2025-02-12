@@ -345,7 +345,7 @@ class GLMHMM:
         print('Start optimize', flush=True)
         # start = time.time()
         # this is the slowest part of the code
-        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B", tol=1e-4) # JH: gradient tol = 1e-4
+        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B") # tol default see /usr/local/lib/python3.10/dist-packages/scipy/optimize/_lbfgsb_py.py
 
         wk = np.reshape(OptimizeResult.x,(self.n_features,self.n_outputs)) # reshape and update weights
         thetak = self.dist_param(wk, x) # calculate theta
