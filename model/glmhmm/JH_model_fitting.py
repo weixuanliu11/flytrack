@@ -98,8 +98,8 @@ obs_df['step'] = filtered_df['step'] # squashed action
 obs_df['step_dt'] = obs_df.groupby('ep_idx')['step'].diff()
 obs_df['speed'] = filtered_df['step']*2 # in m/s unit
 obs_df['acceleration'] = obs_df.groupby('ep_idx')['speed'].diff()
-obs_df['turn'] = filtered_df['turn']
-obs_df['angular_velocity_turn'] = ((filtered_df['turn'] - 0.5)*2) * (6*np.pi) # in rad/s unit
+obs_df['turn'] = ((filtered_df['turn'] - 0.5)*2)
+obs_df['angular_velocity_turn'] = obs_df['turn'] * (6*np.pi) # in rad/s unit
 
 # obs_df['acceleration'] = obs_df['acceleration'].fillna(0) # TODO check timing 
 
