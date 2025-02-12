@@ -4,6 +4,8 @@ import numpy as np
 import sys
 
 sys.path.append('/data/users/weixuan/work')
+sys.path.append('/src/tools/flytrack/model/')
+sys.path.append('/src/tools/flytrack/')
 from config import colors
 
 import numpy as np
