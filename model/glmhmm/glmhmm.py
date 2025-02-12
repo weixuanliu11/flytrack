@@ -87,8 +87,7 @@ class GLMHMM:
         if augment:
             x = np.hstack([x, np.ones((x.shape[0], 1))])
 
-        pre_act = (x @ wk + 1)/2
-        return np.tanh(pre_act)
+        return (np.tanh(x) + 1)/2
     
     #--------------------------------------------------------------------------------#
     #EM Algorithm
