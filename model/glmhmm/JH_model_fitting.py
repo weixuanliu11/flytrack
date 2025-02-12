@@ -1,4 +1,5 @@
 # Usage: python JH_model_fitting.py /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/noisy3x5b5.pkl 4 1
+#  python JH_model_fitting.py dataset.pkl K_num_states seed tolerance
 import glmhmm 
 import numpy as np
 import sys
@@ -15,6 +16,10 @@ dataset = os.path.basename(eval_pkl).replace('.pkl', '')
 K = int(sys.argv[2]) # number of states
 seed = int(sys.argv[3]) # number of instances
 np.random.seed(seed)
+try:
+    tolerance = float(sys.argv[4]) # tolerance for convergence
+except IndexError:
+    tolerance = None
 
 model_name = os.path.basename(os.path.dirname(eval_folder)).split('_')[1]
 print(f"now fitting {K} state on {model_name}, {dataset} seed {seed}")
@@ -171,6 +176,8 @@ X = input_df[input_names][input_df['train_test_label']=='train'].values
 
 N=X.shape[0] # length of training data
 m = glmhmm.GLMHMM(N, K, D, dim_output, covar_epsilon)
+m.optimizer_tol = tolerance
+print('fitting model with tolerance (default if none):', m.optimizer_tol)
 
 A_init=m.transition_matrix
 w_init=m.w

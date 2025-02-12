@@ -28,6 +28,7 @@ class GLMHMM:
         self.n_features = n_features + 1 # D
         self.n_outputs = n_outputs
         self.max_iter = max_iter
+        self.optimizer_tol = None
 
         # Initialize
         if em_dist == "gaussian":
@@ -344,7 +345,7 @@ class GLMHMM:
         print('Start optimize', flush=True)
         # start = time.time()
         # this is the slowest part of the code
-        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B") # tol default see /usr/local/lib/python3.10/dist-packages/scipy/optimize/_lbfgsb_py.py
+        OptimizeResult = optimize.minimize(opt_log, w_flat, jac = "True", method = "L-BFGS-B", tol=self.optimizer_tol) # tol default see /usr/local/lib/python3.10/dist-packages/scipy/optimize/_lbfgsb_py.py
 
         wk = np.reshape(OptimizeResult.x,(self.n_features,self.n_outputs)) # reshape and update weights
         thetak = self.dist_param(wk, x) # calculate theta
