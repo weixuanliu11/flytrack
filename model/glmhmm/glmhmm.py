@@ -89,6 +89,7 @@ class GLMHMM:
         if augment:
             x = np.hstack([x, np.ones((x.shape[0], 1))])
         
+        # pre_act = x @ wk 
         pre_act = (np.tanh(x @ wk) + 1 )/ 2 # action = (np.tanh(action) + 1)/2; line 1430 in tamagotchi.env
         return pre_act
         
