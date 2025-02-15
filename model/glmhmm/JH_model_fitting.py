@@ -5,95 +5,144 @@ import numpy as np
 import sys
 sys.path.append('/src/tools/flytrack/model/')
 from fitting import *
-from analysis import find_permutation, evaluate_classification, calculate_match_rate, matrix_comp
 import glmhmm
 import os
-
-eval_pkl = sys.argv[1]
-obs_pkl = eval_pkl.replace(".pkl", "_observability_test.pkl")
-eval_folder = os.path.dirname(eval_pkl) + '/'
-dataset = os.path.basename(eval_pkl).replace('.pkl', '')
-K = int(sys.argv[2]) # number of states
-seed = int(sys.argv[3]) # number of instances
-np.random.seed(seed)
-try:
-    tolerance = float(sys.argv[4]) # tolerance for convergence
-except IndexError:
-    tolerance = None
-
-model_name = os.path.basename(os.path.dirname(eval_folder)).split('_')[1]
-print(f"now fitting {K} state on {model_name}, {dataset} seed {seed}")
-out_fname = f"HMMGLM_seed{model_name}_randSeed{seed}_K{K}.npz"
-out_path = os.path.join(eval_folder, out_fname)
-print(f"results will be saved to {out_path}")
-
-# load pkl file
 import pickle
 import seaborn as sns
 import pandas as pd
 import numpy as np
 import tamagotchi.eval.log_analysis as log_analysis
 
-# with open(obs_pkls[0], 'rb') as f_handle:
-with open(obs_pkl, 'rb') as f_handle:
-    observability_tupl = pickle.load(f_handle)
-    print(len(observability_tupl))
-# with open(eval_pkls[0], 'rb') as f_handle:
-with open(eval_pkl, 'rb') as f_handle:
-    # based on open_loop_perturbation.py
-    selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
-                                            n_episodes_home=240,
-                                            n_episodes_other=240,  
-                                            balanced=False,
-                                            oob_only=False,
-                                            verbose=True)
-
-    traj_df_stacked, stacked_neural_activity = log_analysis.get_traj_and_activity_and_stack_them(selected_df, 
-                                                                                                obtain_neural_activity = True, 
-                                                                                                obtain_traj_df = True, 
-                                                                                                get_traj_tmp = True,
-                                                                                                extended_metadata = True) # get_traj_tmp 
-    print(traj_df_stacked.shape)
-    print(stacked_neural_activity.shape)
-# for item in observability_tupl:
-#     EV_no_nan, t_sim, x_sim, window_size, eps_idx = item
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Fit a GLMHMM model to a dataset')
+    parser.add_argument('eval_pkl', type=str, nargs='+', help='Paths to the dataset eval logs')
+    parser.add_argument('obs_pkl', type=str, nargs='+', default=None, help='Paths to the observability eval logs')
+    parser.add_argument('dataset', type=str, nargs='+', default=None, help='The wind/plume dataset name to look for in config.data_dir, for log_analysis.get_selected_df')
+    parser.add_argument('K', type=int, help='Number of states')
+    parser.add_argument('seed', type=int, help='Random seed')
+    parser.add_argument('tolerance', type=float, default=None, help='Tolerance for convergence')
     
-ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
+    args = parser.parse_args()
+    # Sanity check 
+    # if obs_pkl or dataset is provided, make sure it is the same length as eval_pkl
+    if args.obs_pkl is not None:
+        assert len(args.eval_pkl) == len(args.obs_pkl), "Length of eval_pkl and obs_pkl must be the same"
+    else:
+        args.obs_pkl = [eval_pkl.replace(".pkl", "_observability_test.pkl") for eval_pkl in args.eval_pkl]
+    if args.dataset is not None:
+        assert len(args.eval_pkl) == len(args.dataset), "Length of eval_pkl and dataset must be the same"
+    else:
+        args.dataset = [os.path.basename(eval_pkl).replace('.pkl', '') for eval_pkl in args.eval_pkl]
+    args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
+    # TODO: what if multiple files are not from the same seed? How to name then>? 
+    model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
+    print(f"now fitting {args.K} state on {model_name}, {dataset[0]} seed {args.K}")
+    out_fname = f"HMMGLM_seed{model_name}_full_inits_randSeed{args.seed}_K{args.K}.npz"
+    out_path = os.path.join(eval_folder, out_fname)
+    print(f"results will be saved to {out_path}")
+    
+    return args
 
-# Preprocess the trajectory data
-# select episodes that have observability matrices
-eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
-subset_traj_df_stacked = traj_df_stacked[eps_at]
-subset_stacked_neural_activity = stacked_neural_activity[eps_at]
+    
+args = parse_args()
+np.random.seed(args.seed)
 
-# for every episode, drop the last row
-subset_traj_df_stacked.reset_index(drop=True, inplace=True)
-last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
-print('dropping', len(last_rows), 'rows, which are the last rows of each episode') # drop because there's no terminal+1 state
-# drop the last row of each episode
-filtered_df = subset_traj_df_stacked.drop(index=last_rows)
-filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
+# eval_pkl = sys.argv[1]
+# obs_pkl = eval_pkl.replace(".pkl", "_observability_test.pkl")
+# eval_folder = os.path.dirname(eval_pkl) + '/'
+# dataset = os.path.basename(eval_pkl).replace('.pkl', '')
+# K = int(sys.argv[2]) # number of states
+# seed = int(sys.argv[3]) # number of instances
+# try:
+    # tolerance = float(sys.argv[4]) # tolerance for convergence
+# except IndexError:
+    # tolerance = None
 
-# calculate time since last wind change
-    # based on /src/JH_boilerplate/agent_evaluatiion/traj_analysis_preprocess.ipynb
-filtered_df = filtered_df.groupby('ep_idx').apply(log_analysis.calc_time_since_last_wind_change).reset_index(drop=True)
 
-# create time column in filtered_df to match with EV_no_nan, starting from 0 to trial end 
-filtered_df['time'] = filtered_df.groupby('ep_idx')['t_val'].transform(lambda x: x - x.iloc[0])
-filtered_df['time'] = filtered_df['time'].round(2)
+last_file_num_trials = 0
+for i in range(len(args.obs_pkls)):
+    obs_fname = args.obs_pkls[i]
+    eval_fname = args.eval_pkls[i]
+    eval_folder = args.eval_folders[i]
+    dataset = args.datasets[i]
+    with open(obs_fname, 'rb') as f_handle:
+        observability_tupl = pickle.load(f_handle)
+        print(len(observability_tupl))
+    with open(eval_fname, 'rb') as f_handle:
+        # based on open_loop_perturbation.py
+        dataset = 'noisy3x5b5'
+        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/'
+        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_17519_6aca800e09d4942c5d296ae7157fcf8b/'
+        selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
+                                                n_episodes_home=240,
+                                                n_episodes_other=240,  
+                                                balanced=False,
+                                                oob_only=False,
+                                                verbose=True,
+                                                log_fname=eval_fname)
+
+        traj_df_stacked, stacked_neural_activity = log_analysis.get_traj_and_activity_and_stack_them(selected_df, 
+                                                                                                    obtain_neural_activity = True, 
+                                                                                                    obtain_traj_df = True, 
+                                                                                                    get_traj_tmp = True,
+                                                                                                    extended_metadata = True) # get_traj_tmp 
+        print(traj_df_stacked.shape)
+        print(stacked_neural_activity.shape)
+
+    
+        
+    ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
+
+    print(ls_eps_idx)
+    # Preprocess the trajectory data
+    # select episodes that have observability matrices
+    eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
+    subset_traj_df_stacked = traj_df_stacked[eps_at]
+    subset_stacked_neural_activity = stacked_neural_activity[eps_at]
+
+    # for every episode, drop the last row
+    subset_traj_df_stacked.reset_index(drop=True, inplace=True)
+    last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
+    print('dropping', len(last_rows), 'rows')
+    # drop the last row of each episode
+    
+    tmp_filtered_df = subset_traj_df_stacked.drop(index=last_rows)
+    tmp_filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
+
+    # calculate time since last wind change
+        # based on /src/JH_boilerplate/agent_evaluatiion/traj_analysis_preprocess.ipynb
+    tmp_filtered_df = tmp_filtered_df.groupby('ep_idx').apply(log_analysis.calc_time_since_last_wind_change).reset_index(drop=True)
+
+    # create time column in tmp_filtered_df to match with EV_no_nan, starting from 0 to trial end 
+    tmp_filtered_df['time'] = tmp_filtered_df.groupby('ep_idx')['t_val'].transform(lambda x: x - x.iloc[0])
+    tmp_filtered_df['time'] = tmp_filtered_df['time'].round(2)
+
+    # shift ep_idx by last_file_num_trials
+    tmp_filtered_df['ep_idx'] += last_file_num_trials
+    last_file_num_trials = traj_df_stacked['ep_idx'].nunique()
+    if not i:
+        filtered_df = tmp_filtered_df
+        filtered_neural_activity = tmp_filtered_neural_activity
+    else:
+        filtered_df = pd.concat([filtered_df, tmp_filtered_df], ignore_index=True)
+        filtered_neural_activity = np.concatenate([filtered_neural_activity, tmp_filtered_neural_activity], axis=0)
+    print("tmp_filtered_df shape", tmp_filtered_df.shape)
+    print("tmp_filtered_neural_activity shape", tmp_filtered_neural_activity.shape)
 
 print("filtered_df shape", filtered_df.shape)
 print("filtered_neural_activity shape", filtered_neural_activity.shape)
 
-# Preprocess the EV data 
-# stack the EV data
-ls_EV_no_nan = [df.assign(ep_idx=ep_idx) for df, ep_idx in zip(ls_EV_no_nan, ls_eps_idx)]
-EV_no_nan = pd.concat(ls_EV_no_nan)
-print(EV_no_nan.shape)
-# Merge with filtered_dfa
-EV_no_nan['time'] = EV_no_nan['time'].round(2)
-EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
-print(EV_no_nan.shape)
+# TODO load multiple EV datasets - not considering for now
+# # Preprocess the EV data 
+# # stack the EV data
+# ls_EV_no_nan = [df.assign(ep_idx=ep_idx) for df, ep_idx in zip(ls_EV_no_nan, ls_eps_idx)]
+# EV_no_nan = pd.concat(ls_EV_no_nan)
+# print(EV_no_nan.shape)
+# # Merge with filtered_dfa
+# EV_no_nan['time'] = EV_no_nan['time'].round(2)
+# EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
+# print(EV_no_nan.shape)
 
 # Preprocess action data
 # get speed and acceleration
@@ -134,8 +183,8 @@ input_df['allo_head_phi_y'] = filtered_df['agent_angle_y']
 input_df['ego_drift_x'] = filtered_df['ego_course_direction_x']
 input_df['ego_drift_y'] = filtered_df['ego_course_direction_y']
 # possible latents to include
-input_df['min_EV_zeta'] = EV_no_nan['zeta']
-input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
+# input_df['min_EV_zeta'] = EV_no_nan['zeta']
+# input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
 input_df['acceleration'] = obs_df['acceleration']
 input_df['angular_acceleration'] = obs_df['angular_acceleration']
 
@@ -175,8 +224,8 @@ X = input_df[input_names][input_df['train_test_label']=='train'].values
 
 
 N=X.shape[0] # length of training data
-m = glmhmm.GLMHMM(N, K, D, dim_output, covar_epsilon)
-m.optimizer_tol = tolerance
+m = glmhmm.GLMHMM(N, args.K, D, dim_output, covar_epsilon)
+m.optimizer_tol = args.tolerance
 print('fitting model with tolerance (default if none):', m.optimizer_tol)
 
 A_init=m.transition_matrix
