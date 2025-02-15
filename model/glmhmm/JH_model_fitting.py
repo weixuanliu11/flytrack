@@ -152,9 +152,9 @@ obs_df['step'] = filtered_df['step'] # squashed action
 obs_df['step_dt'] = obs_df.groupby('ep_idx')['step'].diff()
 obs_df['speed'] = filtered_df['step']*2 # in m/s unit
 obs_df['acceleration'] = obs_df.groupby('ep_idx')['speed'].diff()
-obs_df['turn'] = ((filtered_df['turn'] - 0.5)*2)
-obs_df['angular_velocity_turn'] = obs_df['turn'] * (6*np.pi) # in rad/s unit
-
+obs_df['turn'] = filtered_df['turn']
+obs_df['angular_velocity_turn'] = ((obs_df['turn']  - 0.5)*2) * (6*np.pi) # in rad/s unit
+print("range of turn is ", obs_df['turn'].min(), obs_df['turn'].max())
 # obs_df['acceleration'] = obs_df['acceleration'].fillna(0) # TODO check timing 
 
 # calculate angular velocity and angular acceleration
@@ -240,6 +240,6 @@ lls_pred,A_pred,w_pred,pi0_pred = m.fit(Y,X,A_init,w_init, pi0=pi0_init, fit_ini
                                         sess=None)
 print('time taken:', time.time()-start)
 
-np.savez(out_path, A_init=A_init, w_init=w_init, pi0_init=pi0_init,
+np.savez(args.out_path, A_init=A_init, w_init=w_init, pi0_init=pi0_init,
          A_pred=A_pred, w_pred=w_pred, pi0_pred=pi0_pred, train_idx=train_idx, test_idx=test_idx,
          input_names=input_names, obs_names=obs_names, lls_pred=lls_pred)
