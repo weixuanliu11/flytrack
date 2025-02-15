@@ -5,21 +5,52 @@ import numpy as np
 import sys
 sys.path.append('/src/tools/flytrack/model/')
 from fitting import *
-from analysis import find_permutation, evaluate_classification, calculate_match_rate, matrix_comp
 import glmhmm
 import os
+import pickle
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import tamagotchi.eval.log_analysis as log_analysis
 
-eval_pkl = sys.argv[1]
-obs_pkl = eval_pkl.replace(".pkl", "_observability_test.pkl")
-eval_folder = os.path.dirname(eval_pkl) + '/'
-dataset = os.path.basename(eval_pkl).replace('.pkl', '')
-K = int(sys.argv[2]) # number of states
-seed = int(sys.argv[3]) # number of instances
-np.random.seed(seed)
-try:
-    tolerance = float(sys.argv[4]) # tolerance for convergence
-except IndexError:
-    tolerance = None
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Fit a GLMHMM model to a dataset')
+    parser.add_argument('eval_pkl', type=str, nargs='+', help='Paths to the dataset eval logs')
+    parser.add_argument('obs_pkl', type=str, nargs='+', default=None, help='Paths to the observability eval logs')
+    parser.add_argument('dataset', type=str, nargs='+', default=None, help='The wind/plume dataset name to look for in config.data_dir, for log_analysis.get_selected_df')
+    parser.add_argument('K', type=int, help='Number of states')
+    parser.add_argument('seed', type=int, help='Random seed')
+    parser.add_argument('tolerance', type=float, default=None, help='Tolerance for convergence')
+    
+    args = parser.parse_args()
+    # Sanity check 
+    # if obs_pkl or dataset is provided, make sure it is the same length as eval_pkl
+    if args.obs_pkl is not None:
+        assert len(args.eval_pkl) == len(args.obs_pkl), "Length of eval_pkl and obs_pkl must be the same"
+    else:
+        args.obs_pkl = [eval_pkl.replace(".pkl", "_observability_test.pkl") for eval_pkl in args.eval_pkl]
+    if args.dataset is not None:
+        assert len(args.eval_pkl) == len(args.dataset), "Length of eval_pkl and dataset must be the same"
+    else:
+        args.dataset = [os.path.basename(eval_pkl).replace('.pkl', '') for eval_pkl in args.eval_pkl]
+    args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
+    return args
+
+
+args = parse_args()
+np.random.seed(args.seed)
+
+# eval_pkl = sys.argv[1]
+# obs_pkl = eval_pkl.replace(".pkl", "_observability_test.pkl")
+# eval_folder = os.path.dirname(eval_pkl) + '/'
+# dataset = os.path.basename(eval_pkl).replace('.pkl', '')
+# K = int(sys.argv[2]) # number of states
+# seed = int(sys.argv[3]) # number of instances
+# try:
+    # tolerance = float(sys.argv[4]) # tolerance for convergence
+# except IndexError:
+    # tolerance = None
 
 model_name = os.path.basename(os.path.dirname(eval_folder)).split('_')[1]
 print(f"now fitting {K} state on {model_name}, {dataset} seed {seed}")
@@ -27,12 +58,6 @@ out_fname = f"HMMGLM_seed{model_name}_randSeed{seed}_K{K}.npz"
 out_path = os.path.join(eval_folder, out_fname)
 print(f"results will be saved to {out_path}")
 
-# load pkl file
-import pickle
-import seaborn as sns
-import pandas as pd
-import numpy as np
-import tamagotchi.eval.log_analysis as log_analysis
 
 # with open(obs_pkls[0], 'rb') as f_handle:
 with open(obs_pkl, 'rb') as f_handle:
