@@ -16,12 +16,12 @@ import tamagotchi.eval.log_analysis as log_analysis
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description='Fit a GLMHMM model to a dataset')
-    parser.add_argument('eval_pkl', type=str, nargs='+', help='Paths to the dataset eval logs')
-    parser.add_argument('obs_pkl', type=str, nargs='+', default=None, help='Paths to the observability eval logs')
-    parser.add_argument('dataset', type=str, nargs='+', default=None, help='The wind/plume dataset name to look for in config.data_dir, for log_analysis.get_selected_df')
-    parser.add_argument('K', type=int, help='Number of states')
-    parser.add_argument('seed', type=int, help='Random seed')
-    parser.add_argument('tolerance', type=float, default=None, help='Tolerance for convergence')
+    parser.add_argument('--eval_pkl', type=str, nargs='+', help='Paths to the dataset eval logs')
+    parser.add_argument('--obs_pkl', type=str, nargs='+', default=None, help='Paths to the observability eval logs')
+    parser.add_argument('--dataset', type=str, nargs='+', default=None, help='The wind/plume dataset name to look for in config.data_dir, for log_analysis.get_selected_df')
+    parser.add_argument('--K', type=int, help='Number of states')
+    parser.add_argument('--seed', type=int, help='Random seed')
+    parser.add_argument('--tolerance', type=float, default=None, help='Tolerance for convergence')
     
     args = parser.parse_args()
     # Sanity check 
@@ -37,9 +37,9 @@ def parse_args():
     args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
     # TODO: what if multiple files are not from the same seed? How to name then>? 
     model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
-    print(f"now fitting {args.K} state on {model_name}, {dataset[0]} seed {args.K}")
+    print(f"now fitting {args.K} state on {model_name}, {args.dataset[0]} seed {args.K}")
     out_fname = f"HMMGLM_seed{model_name}_full_inits_randSeed{args.seed}_K{args.K}.npz"
-    out_path = os.path.join(eval_folder, out_fname)
+    out_path = os.path.join(args.eval_folder[0], out_fname)
     print(f"results will be saved to {out_path}")
     
     return args
@@ -61,11 +61,11 @@ np.random.seed(args.seed)
 
 
 last_file_num_trials = 0
-for i in range(len(args.obs_pkls)):
-    obs_fname = args.obs_pkls[i]
-    eval_fname = args.eval_pkls[i]
-    eval_folder = args.eval_folders[i]
-    dataset = args.datasets[i]
+for i in range(len(args.obs_pkl)):
+    obs_fname = args.obs_pkl[i]
+    eval_fname = args.eval_pkl[i]
+    eval_folder = args.eval_folder[i]
+    dataset = args.dataset[i]
     with open(obs_fname, 'rb') as f_handle:
         observability_tupl = pickle.load(f_handle)
         print(len(observability_tupl))
