@@ -35,9 +35,16 @@ def parse_args():
     else:
         args.dataset = [os.path.basename(eval_pkl).replace('.pkl', '') for eval_pkl in args.eval_pkl]
     args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
+    # TODO: what if multiple files are not from the same seed? How to name then>? 
+    model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
+    print(f"now fitting {args.K} state on {model_name}, {dataset[0]} seed {args.K}")
+    out_fname = f"HMMGLM_seed{model_name}_full_inits_randSeed{args.seed}_K{args.K}.npz"
+    out_path = os.path.join(eval_folder, out_fname)
+    print(f"results will be saved to {out_path}")
+    
     return args
 
-
+    
 args = parse_args()
 np.random.seed(args.seed)
 
@@ -52,60 +59,76 @@ np.random.seed(args.seed)
 # except IndexError:
     # tolerance = None
 
-model_name = os.path.basename(os.path.dirname(eval_folder)).split('_')[1]
-print(f"now fitting {K} state on {model_name}, {dataset} seed {seed}")
-out_fname = f"HMMGLM_seed{model_name}_randSeed{seed}_K{K}.npz"
-out_path = os.path.join(eval_folder, out_fname)
-print(f"results will be saved to {out_path}")
 
+last_file_num_trials = 0
+for i in range(len(args.obs_pkls)):
+    obs_fname = args.obs_pkls[i]
+    eval_fname = args.eval_pkls[i]
+    eval_folder = args.eval_folders[i]
+    dataset = args.datasets[i]
+    with open(obs_fname, 'rb') as f_handle:
+        observability_tupl = pickle.load(f_handle)
+        print(len(observability_tupl))
+    with open(eval_fname, 'rb') as f_handle:
+        # based on open_loop_perturbation.py
+        dataset = 'noisy3x5b5'
+        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/'
+        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_17519_6aca800e09d4942c5d296ae7157fcf8b/'
+        selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
+                                                n_episodes_home=240,
+                                                n_episodes_other=240,  
+                                                balanced=False,
+                                                oob_only=False,
+                                                verbose=True,
+                                                log_fname=eval_fname)
 
-# with open(obs_pkls[0], 'rb') as f_handle:
-with open(obs_pkl, 'rb') as f_handle:
-    observability_tupl = pickle.load(f_handle)
-    print(len(observability_tupl))
-# with open(eval_pkls[0], 'rb') as f_handle:
-with open(eval_pkl, 'rb') as f_handle:
-    # based on open_loop_perturbation.py
-    selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
-                                            n_episodes_home=240,
-                                            n_episodes_other=240,  
-                                            balanced=False,
-                                            oob_only=False,
-                                            verbose=True)
+        traj_df_stacked, stacked_neural_activity = log_analysis.get_traj_and_activity_and_stack_them(selected_df, 
+                                                                                                    obtain_neural_activity = True, 
+                                                                                                    obtain_traj_df = True, 
+                                                                                                    get_traj_tmp = True,
+                                                                                                    extended_metadata = True) # get_traj_tmp 
+        print(traj_df_stacked.shape)
+        print(stacked_neural_activity.shape)
 
-    traj_df_stacked, stacked_neural_activity = log_analysis.get_traj_and_activity_and_stack_them(selected_df, 
-                                                                                                obtain_neural_activity = True, 
-                                                                                                obtain_traj_df = True, 
-                                                                                                get_traj_tmp = True,
-                                                                                                extended_metadata = True) # get_traj_tmp 
-    print(traj_df_stacked.shape)
-    print(stacked_neural_activity.shape)
-# for item in observability_tupl:
-#     EV_no_nan, t_sim, x_sim, window_size, eps_idx = item
     
-ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
+        
+    ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
 
-# Preprocess the trajectory data
-# select episodes that have observability matrices
-eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
-subset_traj_df_stacked = traj_df_stacked[eps_at]
-subset_stacked_neural_activity = stacked_neural_activity[eps_at]
+    print(ls_eps_idx)
+    # Preprocess the trajectory data
+    # select episodes that have observability matrices
+    eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
+    subset_traj_df_stacked = traj_df_stacked[eps_at]
+    subset_stacked_neural_activity = stacked_neural_activity[eps_at]
 
-# for every episode, drop the last row
-subset_traj_df_stacked.reset_index(drop=True, inplace=True)
-last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
-print('dropping', len(last_rows), 'rows, which are the last rows of each episode') # drop because there's no terminal+1 state
-# drop the last row of each episode
-filtered_df = subset_traj_df_stacked.drop(index=last_rows)
-filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
+    # for every episode, drop the last row
+    subset_traj_df_stacked.reset_index(drop=True, inplace=True)
+    last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
+    print('dropping', len(last_rows), 'rows')
+    # drop the last row of each episode
+    
+    tmp_filtered_df = subset_traj_df_stacked.drop(index=last_rows)
+    tmp_filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
 
-# calculate time since last wind change
-    # based on /src/JH_boilerplate/agent_evaluatiion/traj_analysis_preprocess.ipynb
-filtered_df = filtered_df.groupby('ep_idx').apply(log_analysis.calc_time_since_last_wind_change).reset_index(drop=True)
+    # calculate time since last wind change
+        # based on /src/JH_boilerplate/agent_evaluatiion/traj_analysis_preprocess.ipynb
+    tmp_filtered_df = tmp_filtered_df.groupby('ep_idx').apply(log_analysis.calc_time_since_last_wind_change).reset_index(drop=True)
 
-# create time column in filtered_df to match with EV_no_nan, starting from 0 to trial end 
-filtered_df['time'] = filtered_df.groupby('ep_idx')['t_val'].transform(lambda x: x - x.iloc[0])
-filtered_df['time'] = filtered_df['time'].round(2)
+    # create time column in tmp_filtered_df to match with EV_no_nan, starting from 0 to trial end 
+    tmp_filtered_df['time'] = tmp_filtered_df.groupby('ep_idx')['t_val'].transform(lambda x: x - x.iloc[0])
+    tmp_filtered_df['time'] = tmp_filtered_df['time'].round(2)
+
+    # shift ep_idx by last_file_num_trials
+    tmp_filtered_df['ep_idx'] += last_file_num_trials
+    last_file_num_trials = traj_df_stacked['ep_idx'].nunique()
+    if not i:
+        filtered_df = tmp_filtered_df
+        filtered_neural_activity = tmp_filtered_neural_activity
+    else:
+        filtered_df = pd.concat([filtered_df, tmp_filtered_df], ignore_index=True)
+        filtered_neural_activity = np.concatenate([filtered_neural_activity, tmp_filtered_neural_activity], axis=0)
+    print("tmp_filtered_df shape", tmp_filtered_df.shape)
+    print("tmp_filtered_neural_activity shape", tmp_filtered_neural_activity.shape)
 
 print("filtered_df shape", filtered_df.shape)
 print("filtered_neural_activity shape", filtered_neural_activity.shape)
@@ -160,8 +183,8 @@ input_df['allo_head_phi_y'] = filtered_df['agent_angle_y']
 input_df['ego_drift_x'] = filtered_df['ego_course_direction_x']
 input_df['ego_drift_y'] = filtered_df['ego_course_direction_y']
 # possible latents to include
-input_df['min_EV_zeta'] = EV_no_nan['zeta']
-input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
+# input_df['min_EV_zeta'] = EV_no_nan['zeta']
+# input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
 input_df['acceleration'] = obs_df['acceleration']
 input_df['angular_acceleration'] = obs_df['angular_acceleration']
 
