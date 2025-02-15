@@ -110,15 +110,16 @@ filtered_df['time'] = filtered_df['time'].round(2)
 print("filtered_df shape", filtered_df.shape)
 print("filtered_neural_activity shape", filtered_neural_activity.shape)
 
-# Preprocess the EV data 
-# stack the EV data
-ls_EV_no_nan = [df.assign(ep_idx=ep_idx) for df, ep_idx in zip(ls_EV_no_nan, ls_eps_idx)]
-EV_no_nan = pd.concat(ls_EV_no_nan)
-print(EV_no_nan.shape)
-# Merge with filtered_dfa
-EV_no_nan['time'] = EV_no_nan['time'].round(2)
-EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
-print(EV_no_nan.shape)
+# TODO load multiple EV datasets - not considering for now
+# # Preprocess the EV data 
+# # stack the EV data
+# ls_EV_no_nan = [df.assign(ep_idx=ep_idx) for df, ep_idx in zip(ls_EV_no_nan, ls_eps_idx)]
+# EV_no_nan = pd.concat(ls_EV_no_nan)
+# print(EV_no_nan.shape)
+# # Merge with filtered_dfa
+# EV_no_nan['time'] = EV_no_nan['time'].round(2)
+# EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
+# print(EV_no_nan.shape)
 
 # Preprocess action data
 # get speed and acceleration
@@ -200,8 +201,8 @@ X = input_df[input_names][input_df['train_test_label']=='train'].values
 
 
 N=X.shape[0] # length of training data
-m = glmhmm.GLMHMM(N, K, D, dim_output, covar_epsilon)
-m.optimizer_tol = tolerance
+m = glmhmm.GLMHMM(N, args.K, D, dim_output, covar_epsilon)
+m.optimizer_tol = args.tolerance
 print('fitting model with tolerance (default if none):', m.optimizer_tol)
 
 A_init=m.transition_matrix
