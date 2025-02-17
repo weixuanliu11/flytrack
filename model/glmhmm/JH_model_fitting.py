@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument('--K', type=int, help='Number of states')
     parser.add_argument('--seed', type=int, help='Random seed')
     parser.add_argument('--tolerance', type=float, default=None, help='Tolerance for convergence')
+    parser.add_argument('--ID', type=str, default=False, help='HMMGLM_seed{seed}_{ID}_randSeed{rand_seed}_K{args.K}.npz')
     
     args = parser.parse_args()
     # Sanity check 
@@ -38,7 +39,10 @@ def parse_args():
     # TODO: what if multiple files are not from the same seed? How to name then>? 
     model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
     print(f"now fitting {args.K} state on {model_name}, {args.dataset[0]} seed {args.K}")
-    out_fname = f"HMMGLM_seed{model_name}_full_inits_randSeed{args.seed}_K{args.K}.npz"
+    if not args.ID:
+        out_fname = f"HMMGLM_seed{model_name}_randSeed{args.seed}_K{args.K}.npz"
+    else:
+        out_fname = f"HMMGLM_seed{model_name}_{args.ID}_randSeed{args.seed}_K{args.K}.npz"
     out_path = os.path.join(args.eval_folder[0], out_fname)
     print(f"results will be saved to {out_path}")
     
