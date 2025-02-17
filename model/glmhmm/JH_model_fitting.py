@@ -37,14 +37,14 @@ def parse_args():
         args.dataset = [os.path.basename(eval_pkl).replace('.pkl', '') for eval_pkl in args.eval_pkl]
     args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
     # TODO: what if multiple files are not from the same seed? How to name then>? 
-    model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
-    print(f"now fitting {args.K} state on {model_name}, {args.dataset[0]} seed {args.K}")
+    args.model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
+    print(f"now fitting {args.K} state on {args.model_name}, {args.dataset[0]} seed {args.K}")
     if not args.ID:
-        out_fname = f"HMMGLM_seed{model_name}_randSeed{args.seed}_K{args.K}.npz"
+        args.out_fname = f"HMMGLM_seed{args.model_name}_randSeed{args.seed}_K{args.K}.npz"
     else:
-        out_fname = f"HMMGLM_seed{model_name}_{args.ID}_randSeed{args.seed}_K{args.K}.npz"
-    out_path = os.path.join(args.eval_folder[0], out_fname)
-    print(f"results will be saved to {out_path}")
+        args.out_fname = f"HMMGLM_seed{args.model_name}_{args.ID}_randSeed{args.seed}_K{args.K}.npz"
+    args.out_path = os.path.join(args.eval_folder[0], args.out_fname)
+    print(f"results will be saved to {args.out_path}")
     
     return args
 
