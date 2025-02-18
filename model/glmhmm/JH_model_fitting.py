@@ -13,6 +13,52 @@ import pandas as pd
 import numpy as np
 import tamagotchi.eval.log_analysis as log_analysis
 
+import hydra
+from omegaconf import OmegaConf, open_dict
+
+# create time lag history on features of interest, for each group_column
+def create_history(df, feature_names, n_timesteps):
+    """
+    Creates a new DataFrame with added columns representing the history of features.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame with a time index.
+        feature_names (list): The names of the features to create history for.
+        n_timesteps (int): The number of past timesteps to include in the history.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with added history columns.
+    """
+    new_df = df.copy()
+    for feature_name in feature_names:
+        for i in range(1, n_timesteps + 1):
+            new_df[f'{feature_name}_lag_{i}'] = df[feature_name].shift(i)
+    return new_df
+
+def create_history_by_group(df, group_column, feature_names, n_timesteps):
+    """
+    Applies the `create_history` function to each group of the DataFrame.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+        group_column (str): The column to group by (e.g., 'ep_idx').
+        feature_names (list): The names of the features to create history for.
+        n_timesteps (int): The number of past timesteps to include in the history.
+
+    Returns:
+        pd.DataFrame: A new DataFrame with added history columns for each group.
+    """
+    # Group the DataFrame by the specified column
+    grouped = df.groupby(group_column)
+
+    # Apply the `create_history` function to each group
+    result = grouped.apply(lambda x: create_history(x, feature_names, n_timesteps))
+
+    # Reset the index to remove the groupby multi-index
+    result = result.reset_index(drop=True)
+
+    return result
+
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(description='Fit a GLMHMM model to a dataset')
@@ -38,7 +84,7 @@ def parse_args():
     args.eval_folder = [os.path.dirname(eval_pkl) + '/' for eval_pkl in args.eval_pkl]
     # TODO: what if multiple files are not from the same seed? How to name then>? 
     args.model_name = os.path.basename(os.path.dirname(args.eval_folder[0])).split('_')[1]
-    print(f"now fitting {args.K} state on {args.model_name}, {args.dataset[0]} seed {args.K}")
+    print(f"now fitting {args.K} state on {args.model_name}, {args.dataset[0]} seed {args.seed}")
     if not args.ID:
         args.out_fname = f"HMMGLM_seed{args.model_name}_randSeed{args.seed}_K{args.K}.npz"
     else:
@@ -48,36 +94,33 @@ def parse_args():
     
     return args
 
+
+@hydra.main(version_base=None, config_path="../../config", config_name="config")
+def parse_args_hydra(args:OmegaConf):
+    # make the nested hash compatible with current argument style 
+    with open_dict(args):
+        for k in args.keys(): # usual keys include ['local_dir', 'db', 'model', 'data_augmentation']...
+            if k not in ['exp_name', 'comment']: # these are not nested
+                args = OmegaConf.merge(args, args[k])
+    print(args["comment"])
+
     
-args = parse_args()
+args = parse_args_hydra()
 np.random.seed(args.seed)
 
-# eval_pkl = sys.argv[1]
-# obs_pkl = eval_pkl.replace(".pkl", "_observability_test.pkl")
-# eval_folder = os.path.dirname(eval_pkl) + '/'
-# dataset = os.path.basename(eval_pkl).replace('.pkl', '')
-# K = int(sys.argv[2]) # number of states
-# seed = int(sys.argv[3]) # number of instances
-# try:
-    # tolerance = float(sys.argv[4]) # tolerance for convergence
-# except IndexError:
-    # tolerance = None
-
-
+# load traj and neural activity data
 last_file_num_trials = 0
 for i in range(len(args.obs_pkl)):
     obs_fname = args.obs_pkl[i]
     eval_fname = args.eval_pkl[i]
     eval_folder = args.eval_folder[i]
     dataset = args.dataset[i]
+    n_trials = args.n_trials[i]
     with open(obs_fname, 'rb') as f_handle:
         observability_tupl = pickle.load(f_handle)
         print(len(observability_tupl))
     with open(eval_fname, 'rb') as f_handle:
         # based on open_loop_perturbation.py
-        dataset = 'noisy3x5b5'
-        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/'
-        # eval_folder = '/src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_17519_6aca800e09d4942c5d296ae7157fcf8b/'
         selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
                                                 n_episodes_home=240,
                                                 n_episodes_other=240,  
@@ -95,13 +138,14 @@ for i in range(len(args.obs_pkl)):
         print(stacked_neural_activity.shape)
 
     
-        
-    ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
-
-    print(ls_eps_idx)
-    # Preprocess the trajectory data
-    # select episodes that have observability matrices
-    eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
+    if args.filter_by_observability_trials:
+        ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
+        print(ls_eps_idx)
+        # Preprocess the trajectory data
+        # select episodes that have observability matrices
+        eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
+    else:
+        eps_at = [True] * traj_df_stacked.shape[0]
     subset_traj_df_stacked = traj_df_stacked[eps_at]
     subset_stacked_neural_activity = stacked_neural_activity[eps_at]
 
@@ -110,7 +154,6 @@ for i in range(len(args.obs_pkl)):
     last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
     print('dropping', len(last_rows), 'rows')
     # drop the last row of each episode
-    
     tmp_filtered_df = subset_traj_df_stacked.drop(index=last_rows)
     tmp_filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
 
@@ -157,7 +200,7 @@ obs_df['step_dt'] = obs_df.groupby('ep_idx')['step'].diff()
 obs_df['speed'] = filtered_df['step']*2 # in m/s unit
 obs_df['acceleration'] = obs_df.groupby('ep_idx')['speed'].diff()
 obs_df['turn'] = filtered_df['turn']
-obs_df['angular_velocity_turn'] = ((obs_df['turn']  - 0.5)*2) * (6*np.pi) # in rad/s unit
+obs_df['turn_velocity'] = ((obs_df['turn']  - 0.5)*2) * (6*np.pi) # in rad/s unit
 print("range of turn is ", obs_df['turn'].min(), obs_df['turn'].max())
 # obs_df['acceleration'] = obs_df['acceleration'].fillna(0) # TODO check timing 
 
@@ -189,14 +232,28 @@ input_df['ego_drift_y'] = filtered_df['ego_course_direction_y']
 # possible latents to include
 # input_df['min_EV_zeta'] = EV_no_nan['zeta']
 # input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
+input_df['odor_lastenc'] = filtered_df['odor_lastenc']
 input_df['acceleration'] = obs_df['acceleration']
 input_df['angular_acceleration'] = obs_df['angular_acceleration']
+# put in actions for time history of actions 
+input_df['step'] = obs_df['step']
+input_df['speed'] = obs_df['speed']
+input_df['turn'] = obs_df['turn']
+input_df['turn_velocity'] = obs_df['turn_velocity']
+input_df['angular_velocity'] = obs_df['angular_velocity']
 
 # set 10% trials as test set
 input_df['train_test_label'] = obs_df['train_test_label']
 print(input_df.groupby('train_test_label')['ep_idx'].nunique())
 print(obs_df[obs_df['train_test_label']=='test'].groupby('train_test_label')['ep_idx'].unique())
 train_idx = input_df[input_df['train_test_label']=='train']['ep_idx'].unique()
+
+# create history of features by episode
+input_df = create_history_by_group(input_df, 
+                                   'ep_idx', 
+                                    args.time_history_inputs, 
+                                    args.time_history_length) 
+
 # drop rows with NaN
 input_df.dropna(inplace=True)
 obs_df.dropna(inplace=True)
@@ -212,14 +269,9 @@ obs_df.dropna(inplace=True)
 #     X = X[:session_length*num_sessions]
 
 # K=4 # number of states # move to argv
-input_names = ['app_wind_x', 'app_wind_y', 
-               'odor', 
-               'allo_head_phi_x', 'allo_head_phi_y', 
-               'ego_drift_x', 'ego_drift_y'
-               # 'min_EV_zeta', 'time_since_last_wind_change', 'acceleration', 'angular_acceleration'
-               ]
+input_names = args.input_names
 D=len(input_names) # number of input features
-obs_names = ['step', 'turn'] # TODO try these variables in physical units
+obs_names = args.obs_names
 dim_output=len(obs_names) # number of output features
 covar_epsilon=1e-3
 
