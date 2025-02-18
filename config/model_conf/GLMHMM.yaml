@@ -1,0 +1,19 @@
+K: 3 # number of HMM states (int)
+seed: 1 # random seed (int)
+tolerance: 1e-3 # tolerance for convergence (float)
+
+input_features:
+  - 'app_wind_x'
+  - 'app_wind_y'
+  - 'odor',
+  - 'allo_head_phi_x'
+  - 'allo_head_phi_y'
+  - 'ego_drift_x'
+  - 'ego_drift_y'
+  - 'odor_lastenc'
+  - 'step_lag_1'
+  - 'step_lag_2'
+  - 'turn_lag_1'
+  - 'turn_lag_2'
+
+   

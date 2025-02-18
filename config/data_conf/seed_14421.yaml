@@ -1,0 +1,12 @@
+eval_folder: /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.001_debug_yes_vec_norm_train_actor_std/eval/plume_14421_37e2cd4be4c96943d0341849b40f81eb/
+model_seed: '14421'
+model_hash: 'plume_14421_37e2cd4be4c96943d0341849b40f81eb'
+eval_pkl: 
+  - ${eval_folder}/noisy3x5b5.pkl
+  - ${eval_folder}/noisy3x5b5_more_offsets.pkl
+obs_pkl:
+  - ${eval_folder}/noisy3x5b5_observability_test.pkl
+  - ${eval_folder}/noisy3x5b5_more_offsets_observability_test.pkl
+dataset: 
+  - 'noisy3x5b5'
+  - 'noisy3x5b5'

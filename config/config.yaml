@@ -1,0 +1,17 @@
+# default configuration files
+defaults:
+  - model_conf: GLMHMM
+  - data_conf: seed_14421 # this should be v3 unless testing; calls the db config file
+  - _self_
+  - override hydra/job_logging: disabled    
+
+# experiment specific configurations
+exp_name: GLMHMM # have this as the name of the output folder 
+data_conf:
+  out_fname: HMMGLM_seed${data_conf.model_seed}_randSeed${model_conf.seed}_K${model_conf.K}.npz
+comment: GLMHMM with ${model_conf.K} state on ${data_conf.model_seed}, ${data_conf.data_conf[0]} seed {model_conf.seed}, tol ${model_conf.tolerance}\n Saving to ${data_conf.out_fname}")
+
+# set log/config save directory
+hydra:
+  run:
+    dir: ${data_conf.eval_folder}/behavioral_analysis/${exp_name}/${now:%Y-%m-%d}/${now:%H-%M-%S} 
