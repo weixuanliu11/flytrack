@@ -4,6 +4,10 @@ model_hash: 'plume_14421_37e2cd4be4c96943d0341849b40f81eb'
 eval_pkl: 
   - ${eval_folder}/noisy3x5b5.pkl
   - ${eval_folder}/noisy3x5b5_more_offsets.pkl
+n_trials: # number of HOMED trials to evaluate
+  - 240
+  - 720
+filter_by_observability_trials: False 
 obs_pkl:
   - ${eval_folder}/noisy3x5b5_observability_test.pkl
   - ${eval_folder}/noisy3x5b5_more_offsets_observability_test.pkl

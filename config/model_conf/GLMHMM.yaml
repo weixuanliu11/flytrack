@@ -1,8 +1,15 @@
 K: 3 # number of HMM states (int)
 seed: 1 # random seed (int)
 tolerance: 1e-3 # tolerance for convergence (float)
-
-input_features:
+time_history_length: 2 # number of time steps to include in the GLM (int)
+time_history_inputs: 
+  - 'step'
+  - 'turn'
+#  ['app_wind_x', 'app_wind_y', 
+# 'odor', 'allo_head_phi_x', 'allo_head_phi_y', 
+# 'ego_drift_x', 'ego_drift_y', 
+# 'step', 'turn', 'acceleration', 'angular_acceleration'] #possible choices
+input_names: # features to the GLM; col names to
   - 'app_wind_x'
   - 'app_wind_y'
   - 'odor',
@@ -15,5 +22,6 @@ input_features:
   - 'step_lag_2'
   - 'turn_lag_1'
   - 'turn_lag_2'
-
-   
+obs_names: # outputs of the GLM
+  - 'step'
+  - 'turn'
