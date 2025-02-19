@@ -1,0 +1,26 @@
+# default configuration files
+defaults:
+  - model_conf: GLMHMM_time_history
+  - data_conf: seed_14421 # this should be v3 unless testing; calls the db config file
+  - _self_
+  # - override hydra/job_logging: disabled    
+  - override hydra/launcher: joblib
+
+# experiment specific configurations
+exp_name: GLMHMM # have this as the name of the output folder 
+data_conf:
+  out_fname: HMMGLM_seed${data_conf.model_seed}_randSeed${model_conf.seed}_K${model_conf.K}.npz
+  out_path: ${data_conf.eval_folder}/behavioral_analysis/GLMHMM/${exp_name}/${out_fname}
+comment: GLMHMM with ${model_conf.K} state on ${data_conf.model_seed}, ${data_conf.model_hash} seed ${model_conf.seed}, tol ${model_conf.tolerance}\n Saving to ${data_conf.out_fname}")
+
+# set log/config save directory
+hydra:
+  launcher:
+      n_jobs: 6 # Set the maximum number of processes to 4
+  sweep:
+      dir: ${data_conf.eval_folder}/behavioral_analysis/GLMHMM/${exp_name}/
+      subdir: K_${model_conf.K}_seed_${model_conf.seed}
+
+
+
+# python3 /src/tools/flytrack/model/glmhmm/JH_model_fitting.py --multirun "model_conf.seed=range(1,4)" "model_conf.K=range(2,5)" --config-name config_sweeper 
