@@ -109,7 +109,7 @@ def main(args:OmegaConf):
     log.info(args["comment"])
     log.info(args)
     np.random.seed(args.seed)
-    log.info('seed:', args.seed)
+    log.info(f'seed: {args.seed}')
 
     # load traj and neural activity data
     last_file_num_trials = 0
@@ -151,7 +151,7 @@ def main(args:OmegaConf):
         # for every episode, drop the last row
         subset_traj_df_stacked.reset_index(drop=True, inplace=True)
         last_rows = subset_traj_df_stacked.groupby('ep_idx').tail(1).index
-        log.info('dropping', len(last_rows), 'rows')
+        log.info(f'dropping {len(last_rows)} rows')
         # drop the last row of each episode
         tmp_filtered_df = subset_traj_df_stacked.drop(index=last_rows)
         tmp_filtered_neural_activity = np.delete(subset_stacked_neural_activity, last_rows, axis=0)
@@ -173,11 +173,11 @@ def main(args:OmegaConf):
         else:
             filtered_df = pd.concat([filtered_df, tmp_filtered_df], ignore_index=True)
             filtered_neural_activity = np.concatenate([filtered_neural_activity, tmp_filtered_neural_activity], axis=0)
-        log.info("tmp_filtered_df shape", tmp_filtered_df.shape)
-        log.info("tmp_filtered_neural_activity shape", tmp_filtered_neural_activity.shape)
+        log.info(f"tmp_filtered_df shape: {tmp_filtered_df.shape}")
+        log.info(f"tmp_filtered_neural_activity shape: {tmp_filtered_neural_activity.shape}")
 
-    log.info("filtered_df shape", filtered_df.shape)
-    log.info("filtered_neural_activity shape", filtered_neural_activity.shape)
+    log.info(f"filtered_df shape: {filtered_df.shape}")
+    log.info(f"filtered_neural_activity shape: {filtered_neural_activity.shape}")
 
     # TODO load multiple EV datasets - not considering for now
     # # Preprocess the EV data 
@@ -200,7 +200,7 @@ def main(args:OmegaConf):
     obs_df['acceleration'] = obs_df.groupby('ep_idx')['speed'].diff()
     obs_df['turn'] = filtered_df['turn']
     obs_df['turn_velocity'] = ((obs_df['turn']  - 0.5)*2) * (6*np.pi) # in rad/s unit
-    log.info("range of turn is ", obs_df['turn'].min(), obs_df['turn'].max())
+    log.info(f"range of turn is {obs_df['turn'].min()} to {obs_df['turn'].max()}")
     # obs_df['acceleration'] = obs_df['acceleration'].fillna(0) # TODO check timing 
 
     # calculate angular velocity and angular acceleration
@@ -242,7 +242,7 @@ def main(args:OmegaConf):
 
     # set 10% trials as test set
     input_df['train_test_label'] = obs_df['train_test_label']
-    log.info(input_df.groupby('train_test_label')['ep_idx'].nunique())
+    log.info(input_df.groupby('train_test_label')['ep_idx'].nunique().to_string())
     log.info(f"Test episodes: {obs_df[obs_df['train_test_label']=='test'].groupby('train_test_label')['ep_idx'].unique()}")
     train_idx = input_df[input_df['train_test_label']=='train']['ep_idx'].unique()
 
@@ -281,7 +281,7 @@ def main(args:OmegaConf):
     N=X.shape[0] # length of training data
     m = glmhmm.GLMHMM(N, args.K, D, dim_output, covar_epsilon)
     m.optimizer_tol = args.tolerance
-    log.info('fitting model with tolerance (default if none):', m.optimizer_tol)
+    log.info(f'fitting model with tolerance (default if none): {m.optimizer_tol}')
 
     A_init=m.transition_matrix
     w_init=m.w
@@ -292,10 +292,10 @@ def main(args:OmegaConf):
 
     lls_pred,A_pred,w_pred,pi0_pred = m.fit(Y,X,A_init,w_init, pi0=pi0_init, fit_init_states=True, 
                                             sess=None)
-    log.info('time taken:', time.time()-start)
+    log.info(f'time taken: {time.time()-start}')
 
     np.savez(args.out_path, A_init=A_init, w_init=w_init, pi0_init=pi0_init,
             A_pred=A_pred, w_pred=w_pred, pi0_pred=pi0_pred, train_idx=train_idx, test_idx=test_idx,
-            input_names=input_names, obs_names=obs_names, lls_pred=lls_pred)
+            input_names=input_names, obs_names=obs_names, lls_pred=lls_pred, covariances = m.covariances)
 
 main()
