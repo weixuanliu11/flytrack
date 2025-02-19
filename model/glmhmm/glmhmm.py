@@ -318,7 +318,7 @@ class GLMHMM:
             wk = wk.reshape((self.n_features, self.n_outputs))
 
         thetak = self.dist_param(wk, x)
-        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk)) for i in range(self.N)]
+        ll_list = [gammak[i] * np.log(self.dist_pdf(y[i], thetak[i], otherparamk=otherparamk) + 1e-10) for i in range(self.N)]
         ll = np.sum(ll_list)
         return -ll
     
