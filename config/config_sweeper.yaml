@@ -19,7 +19,7 @@ comment: GLMHMM with ${model_conf.K} state on ${data_conf.model_seed}, ${data_co
 # set log/config save directory
 hydra:
   launcher:
-      n_jobs: 6 # Set the maximum number of processes to 4
+      n_jobs: 6 # Set the maximum number of processes to 6
   sweep:
       dir: ${data_conf.eval_folder}/behavioral_analysis/GLMHMM/${exp_name}/
       subdir: K_${model_conf.K}_seed_${model_conf.seed}
