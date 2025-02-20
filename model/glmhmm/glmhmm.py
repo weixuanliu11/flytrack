@@ -563,3 +563,62 @@ class GLMHMM:
             )
 
         return X, Y, states
+    
+    def compute_state_probability(self, x, y, sess=None, B=1):
+        # probability of being in state k at time t given the entire data
+        #    def fit(self,y,x,A,w,pi0=None,fit_init_states=False,maxiter=250,tol=1e-3,sess=None,B=1):
+        """
+        Fits the GLMHMM to the data using the EM algorithm.
+
+        Args:
+            y (ndarray): Observations, shape (N, output_dim).
+            x (ndarray): Input features, shape (N, D-1).
+            A (ndarray): Initial transition matrix, shape (K, K).
+            w (ndarray): Initial weights, shape (K, D, output_dim).
+            pi0 (optional): Initial state probabilities, shape (K,).
+            fit_init_states (bool): Whether to optimize initial state probabilities.
+            maxiter (int): Maximum number of EM iterations.
+            tol (float): Convergence tolerance for the log-likelihood.
+            sess (optional): Session boundaries for separate EM computation.
+            B (float): Temperature parameter for annealing.
+
+        Returns:
+            tuple:
+                - Log-likelihood values for each iteration.
+                - Fitted transition matrix, weights, and initial probabilities.
+        """
+        x = np.array(x)
+        y = np.array(y)
+
+        x = np.hstack([x, np.ones((x.shape[0], 1))])
+        
+        phi = np.zeros((self.N, self.n_states))#(N, K)
+        for k in range(self.n_states):
+            thetak = self.dist_param(self.w[k], x) # calculate theta
+            for t in range(self.N):
+                phi[t,k] = self.dist_pdf(y[t], thetak[t], otherparamk=self.covariances[k]) # calculate phi
+                # print('theta[t]', thetak[t])
+                # print('y[t]', y[t])
+                # print('phi[t,k]', phi[t,k])
+        # print("phi", phi)
+        if sess is None:
+            sess = np.array([0,self.N]) # equivalent to saying the entire data set has one session
+
+        alpha = np.zeros((self.N,self.n_states))
+        beta = np.zeros_like(alpha)
+        cs = np.zeros((self.N))
+        self.pStates = np.zeros_like(alpha)
+        self.states = np.zeros_like(cs)
+        ll = 0
+        A=self.transition_matrix
+        pi0=self.pi0
+        for s in range(len(sess)-1): 
+            ll_s,alpha_s,_,cs_s = self.forwardPass(y[sess[s]:sess[s+1]],A,phi[sess[s]:sess[s+1],:],pi0=pi0)
+            pBack_s,beta_s,zhatBack_s = self.backwardPass(y[sess[s]:sess[s+1]],A,phi[sess[s]:sess[s+1],:],alpha_s,cs_s)
+            ll += ll_s
+            alpha[sess[s]:sess[s+1]] = alpha_s
+            cs[sess[s]:sess[s+1]] = cs_s
+            self.pStates[sess[s]:sess[s+1]] = pBack_s ** B
+            beta[sess[s]:sess[s+1]] = beta_s
+            self.states[sess[s]:sess[s+1]] = zhatBack_s
+        return self.pStates
