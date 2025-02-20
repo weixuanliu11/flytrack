@@ -256,7 +256,10 @@ def main(args:OmegaConf):
     # drop rows with NaN
     input_df.dropna(inplace=True)
     obs_df.dropna(inplace=True)
-    obs_df = obs_df.loc[input_df.index.tolist()] # ensures both have the same length - input_df may drop more when creating history
+    intersection_idx = input_df.index.intersection(obs_df.index).to_list()
+    # ensures both have the same length - input_df may drop more when creating history; obs may drop some rows that input_df does not... Not sure what they should be 
+    input_df = input_df.loc[intersection_idx]
+    obs_df = obs_df.loc[intersection_idx] 
 
     # session_length = 0
     # if not session_length:
