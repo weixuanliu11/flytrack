@@ -622,3 +622,20 @@ class GLMHMM:
             beta[sess[s]:sess[s+1]] = beta_s
             self.states[sess[s]:sess[s+1]] = zhatBack_s
         return self.pStates
+    
+    
+    def predict_emissions(self, x, state_seq):
+        """
+        Predicts the emissions for the given data.
+
+        Returns:
+            ndarray: Predicted emissions, shape (N, output_dim).
+        """
+        x = np.hstack([x, np.ones((x.shape[0], 1))]) # Augment X with bias term
+        N = x.shape[0]
+        Y_pred = np.zeros((N, self.n_outputs))
+        
+        for t in range(N):
+            Y_pred[t] = self.dist_param(self.w[state_seq[t]], x[t])
+
+        return Y_pred
