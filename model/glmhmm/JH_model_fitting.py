@@ -256,7 +256,7 @@ def main(args:OmegaConf):
     # drop rows with NaN
     input_df.dropna(inplace=True)
     obs_df.dropna(inplace=True)
-
+    obs_df = obs_df.loc[input_df.index.tolist()] # ensures both have the same length - input_df may drop more when creating history
 
     # session_length = 0
     # if not session_length:
