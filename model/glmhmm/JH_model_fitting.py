@@ -19,7 +19,6 @@ from omegaconf import OmegaConf, open_dict
 import logging 
 log = logging.getLogger(__name__)
 
-
 # create time lag history on features of interest, for each group_column
 def create_history(df, feature_names, n_timesteps):
     """
@@ -165,8 +164,7 @@ def main(args:OmegaConf):
         tmp_filtered_df['time'] = tmp_filtered_df['time'].round(2)
 
         # shift ep_idx by last_file_num_trials
-        tmp_filtered_df['ep_idx'] += last_file_num_trials
-        last_file_num_trials = traj_df_stacked['ep_idx'].nunique()
+        tmp_filtered_df['ep_idx'] += n_trials # shift the ep_idx to match with the previous file - n_trials in conf need to be set to totall num trials!
         if not i:
             filtered_df = tmp_filtered_df
             filtered_neural_activity = tmp_filtered_neural_activity
@@ -212,10 +210,6 @@ def main(args:OmegaConf):
 
     # set 10% trials as test set
     test_idx = np.random.choice(obs_df['ep_idx'].unique(), int(0.1*len(obs_df['ep_idx'].unique())), replace=False)
-    obs_df['train_test_label'] = 'train'
-    obs_df.loc[obs_df['ep_idx'].isin(test_idx), 'train_test_label'] = 'test'
-    # print how many train and test episodes
-    log.info(f"Looking at {obs_df.groupby('train_test_label')['ep_idx'].nunique()} unique episodes")
 
     input_df = pd.DataFrame()
     # observations of the agent
@@ -240,27 +234,33 @@ def main(args:OmegaConf):
     input_df['turn_velocity'] = obs_df['turn_velocity']
     input_df['angular_velocity'] = obs_df['angular_velocity']
 
-    # set 10% trials as test set
-    input_df['train_test_label'] = obs_df['train_test_label']
-    log.info(input_df.groupby('train_test_label')['ep_idx'].nunique().to_string())
-    log.info(f"Test episodes: {obs_df[obs_df['train_test_label']=='test'].groupby('train_test_label')['ep_idx'].unique()}")
-    train_idx = input_df[input_df['train_test_label']=='train']['ep_idx'].unique()
-
     # create history of features by episode
     if 'time_history_inputs' in args.keys():
         input_df = create_history_by_group(input_df, 
                                         'ep_idx', 
                                             args.time_history_inputs, 
                                             args.time_history_length) 
-
+    print(f"before drop input_df shape: {input_df.shape}")
+    print(f"before drop obs_df shape: {obs_df.shape}")
     # drop rows with NaN
     input_df.dropna(inplace=True)
     obs_df.dropna(inplace=True)
-    intersection_idx = input_df.index.intersection(obs_df.index).to_list()
-    # ensures both have the same length - input_df may drop more when creating history; obs may drop some rows that input_df does not... Not sure what they should be 
+    # keep only the rows that are in both input and obs dfs
+    intersection_idx = input_df.index.intersection(obs_df.index)
     input_df = input_df.loc[intersection_idx]
-    obs_df = obs_df.loc[intersection_idx] 
-
+    obs_df = obs_df.loc[intersection_idx]
+    # create train test labels
+    obs_df['train_test_label'] = 'train'
+    obs_df.loc[obs_df['ep_idx'].isin(test_idx), 'train_test_label'] = 'test'
+    # input_df['train_test_label'] = obs_df['train_test_label']
+    input_df['train_test_label'] = 'train'
+    input_df.loc[input_df['ep_idx'].isin(test_idx), 'train_test_label'] = 'test'
+    # log and sanity check
+    log.info(f"Test train split stats: {obs_df.groupby('train_test_label')['ep_idx'].nunique()}")
+    log.info(f"Test episodes: {obs_df[obs_df['train_test_label']=='test'].groupby('train_test_label')['ep_idx'].unique()}")
+    train_idx = input_df[input_df['train_test_label']=='train']['ep_idx'].unique()
+    assert (obs_df['train_test_label'].value_counts() == input_df['train_test_label'].value_counts()).all(), "input and observation dfs do not match"
+    
     # session_length = 0
     # if not session_length:
     #     sess = None
