@@ -1,0 +1,15 @@
+# rel wind agent
+eval_folder: /src/data/published_results/reproduce/best_agents/plume_20230923_VRNN_constantx5b5noisy3x5b5_stepoob_bx0.30.8_t10000004000000_q2.00.5_dmx0.80.8_dmn0.70.4_h64_wd0.0001_n4_codeVRNN_seed15113f/
+model_seed: '15113f'
+model_hash: 'seed15113f'
+eval_pkl: 
+  - ${eval_folder}/noisy3x5b5.pkl # passed straight to log_analysis.get_traj_and_activity_and_stack_them
+n_trials: # number of trials in the evaluation set
+  - 240
+fit_on_n_trials: # number of HOMED trials to fit the model on, optional 
+  - 40
+filter_by_observability_trials: False 
+obs_pkl:
+  - 'dummy'
+dataset: 
+  - 'noisy3x5b5'

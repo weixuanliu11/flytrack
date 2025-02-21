@@ -1,0 +1,12 @@
+# least num HOME is 47 for rel agents cd 
+K: 3 # number of HMM states (int)
+seed: 1 # random seed (int)
+tolerance: 1e-3 # tolerance for convergence (float)
+input_names: # features to the GLM; col names to
+  - 'app_wind_x'
+  - 'app_wind_y'
+  - 'odor'
+  - 'odor_lastenc'
+obs_names: # outputs of the GLM
+  - 'step'
+  - 'turn'
