@@ -148,7 +148,8 @@ def main(args:OmegaConf):
         elif fit_on_n_trials != 'all':
             ep_all = traj_df_stacked['ep_idx'].unique()
             # randomly select fit_on_n_trials
-            eps_at = np.random.choice(ep_all, fit_on_n_trials, replace=False)
+            eps_selected = np.random.choice(ep_all, fit_on_n_trials, replace=False)
+            eps_at = [True if ep_i in eps_selected else False for ep_i in traj_df_stacked['ep_idx'] ]
         else:
             eps_at = [True] * traj_df_stacked.shape[0]
         subset_traj_df_stacked = traj_df_stacked[eps_at]
