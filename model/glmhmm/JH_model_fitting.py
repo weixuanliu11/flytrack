@@ -118,8 +118,11 @@ def main(args:OmegaConf):
         eval_folder = os.path.dirname(eval_fname) # will not work if multiple folders are provided
         dataset = args.dataset[i]
         n_trials = args.n_trials[i]
-        with open(obs_fname, 'rb') as f_handle:
-            observability_tupl = pickle.load(f_handle)
+        fit_on_n_trials = args.fit_on_n_trials[i]
+    
+        if obs_fname != 'dummy':
+            with open(obs_fname, 'rb') as f_handle:
+                observability_tupl = pickle.load(f_handle)
         with open(eval_fname, 'rb') as f_handle:
             # based on open_loop_perturbation.py
             selected_df = log_analysis.get_selected_df(eval_folder, [dataset],
@@ -137,11 +140,15 @@ def main(args:OmegaConf):
                                                                                                         extended_metadata = True) # get_traj_tmp 
 
         
-        if args.filter_by_observability_trials:
+        if args.filter_by_observability_trials and obs_fname != 'dummy': # basically should never be used... obs can always be provided, maybe not used in fitting but should be here anyway
             ls_EV_no_nan, ls_t_sim, ls_x_sim, ls_window_size, ls_eps_idx = zip(*observability_tupl)
             # Preprocess the trajectory data
             # select episodes that have observability matrices
             eps_at = [True if ep_i in ls_eps_idx else False for ep_i in traj_df_stacked['ep_idx'] ]
+        elif fit_on_n_trials != 'all':
+            ep_all = traj_df_stacked['ep_idx'].unique()
+            # randomly select fit_on_n_trials
+            eps_at = np.random.choice(ep_all, fit_on_n_trials, replace=False)
         else:
             eps_at = [True] * traj_df_stacked.shape[0]
         subset_traj_df_stacked = traj_df_stacked[eps_at]
@@ -188,6 +195,7 @@ def main(args:OmegaConf):
     # EV_no_nan = EV_no_nan.merge(filtered_df[['ep_idx', 'time', 'time_since_last_wind_change', 'odor_01']], on=['ep_idx', 'time'], how='inner')
     # log.info(EV_no_nan.shape)
 
+    obs_names = args.obs_names
     # Preprocess action data
     # get speed and acceleration
     obs_df = pd.DataFrame()
@@ -211,19 +219,27 @@ def main(args:OmegaConf):
     # set 10% trials as test set
     test_idx = np.random.choice(obs_df['ep_idx'].unique(), int(0.1*len(obs_df['ep_idx'].unique())), replace=False)
 
+    input_names = args.input_names
     input_df = pd.DataFrame()
     # observations of the agent
     input_df['ep_idx'] = filtered_df['ep_idx']
-    input_df['app_wind_x'] = filtered_df['wind_x_obs']
-    input_df['app_wind_y'] = filtered_df['wind_y_obs']
-    input_df['odor'] = filtered_df['odor_eps_log']
+
+    if 'app_wind_x' in input_names:
+        input_df['app_wind_x'] = filtered_df['wind_x_obs']
+        input_df['app_wind_y'] = filtered_df['wind_y_obs']
+    elif 'rel_wind_x' in input_names:
+        input_df['rel_wind_x'] = filtered_df['wind_x_obs']
+        input_df['rel_wind_y'] = filtered_df['wind_y_obs']
+        
+    if 'odor_eps_log' in filtered_df.columns:
+        input_df['odor'] = filtered_df['odor_eps_log']
+    else:
+        input_df['odor'] = filtered_df['odor_obs'] # odor from RMS norm'd obs and thresholded
     input_df['allo_head_phi_x'] = filtered_df['agent_angle_x']
     input_df['allo_head_phi_y'] = filtered_df['agent_angle_y']
-    input_df['ego_drift_x'] = filtered_df['ego_course_direction_x']
-    input_df['ego_drift_y'] = filtered_df['ego_course_direction_y']
-    # possible latents to include
-    # input_df['min_EV_zeta'] = EV_no_nan['zeta']
-    # input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
+    if 'ego_drift_x' in input_names: # not in rel wind - don't try if not in input_names
+        input_df['ego_drift_x'] = filtered_df['ego_course_direction_x']
+        input_df['ego_drift_y'] = filtered_df['ego_course_direction_y']
     input_df['odor_lastenc'] = filtered_df['odor_lastenc']
     input_df['acceleration'] = obs_df['acceleration']
     input_df['angular_acceleration'] = obs_df['angular_acceleration']
@@ -233,6 +249,9 @@ def main(args:OmegaConf):
     input_df['turn'] = obs_df['turn']
     input_df['turn_velocity'] = obs_df['turn_velocity']
     input_df['angular_velocity'] = obs_df['angular_velocity']
+    # possible latents to include
+    # input_df['min_EV_zeta'] = EV_no_nan['zeta']
+    # input_df['time_since_last_wind_change'] = EV_no_nan['time_since_last_wind_change']
 
     # create history of features by episode
     if 'time_history_inputs' in args.keys():
@@ -271,9 +290,8 @@ def main(args:OmegaConf):
     #     X = X[:session_length*num_sessions]
 
     # K=4 # number of states # move to argv
-    input_names = args.input_names
-    D=len(input_names) # number of input features
-    obs_names = args.obs_names
+
+    D=len(input_names) # number of input features    
     dim_output=len(obs_names) # number of output features
     covar_epsilon=1e-3
 
