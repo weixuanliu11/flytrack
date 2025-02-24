@@ -1,6 +1,6 @@
-eval_folder: /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.01_train_std_pois_wind/eval/plume_24835_e03b9588604c41ee7292e64a5274bfc0
+eval_folder: /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.01_train_std_pois_wind/eval/plume_24835_5216f9b29f4bc2d9496619e9d2132553/
 model_seed: '24835'
-model_hash: 'plume_24835_e03b9588604c41ee7292e64a5274bfc0'
+model_hash: 'plume_24835_5216f9b29f4bc2d9496619e9d2132553'
 eval_pkl: 
   - ${eval_folder}/poisson_noisy3x5b5.pkl
 n_trials: # number of HOMED trials to evaluate
