@@ -24,3 +24,6 @@ hydra:
 
 
 # python3 /src/tools/flytrack/model/glmhmm/JH_model_fitting.py --multirun "model_conf.seed=range(1,4)" "model_conf.K=range(2,5)" --config-name config_sweeper 
+
+
+# python3 /src/tools/flytrack/model/glmhmm/JH_model_fitting.py --multirun "model_conf.seed=range(1,4)" "model_conf.K=range(2,5)" data_conf=seed_11848,seed_21943,seed_24835,seed_30011 --config-name config_sweeper 

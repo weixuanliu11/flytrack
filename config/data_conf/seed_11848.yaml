@@ -1,0 +1,14 @@
+eval_folder: /src/data/wind_sensing/apparent_wind_visual_feedback/sw_dist_logstep_wind_0.01_train_std_pois_wind/eval/plume_11848_abc2d820be42ae13fbdd73e28e3a04a4
+model_seed: '11848'
+model_hash: 'plume_11848_abc2d820be42ae13fbdd73e28e3a04a4'
+eval_pkl: 
+  - ${eval_folder}/poisson_noisy3x5b5.pkl
+n_trials: # number of HOMED trials to evaluate
+  - 960
+fit_on_n_trials: # number of HOMED trials to fit the model on, optional 
+  - 80
+filter_by_observability_trials: False 
+obs_pkl:
+  - 'dummy'
+dataset: 
+  - 'poisson_noisy3x5b5'
