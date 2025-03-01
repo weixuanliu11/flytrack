@@ -320,4 +320,5 @@ def main(args:OmegaConf):
             A_pred=A_pred, w_pred=w_pred, pi0_pred=pi0_pred, train_idx=train_idx, test_idx=test_idx,
             input_names=input_names, obs_names=obs_names, lls_pred=lls_pred, covariances = m.covariances)
 
-main()
+if __name__ == '__main__':
+    main()
