@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from scipy.optimize import linear_sum_assignment
 from fitting import load_models
+from util import last_non_nan, compute_transition_probabilities
 
 import numpy as np
 import json
@@ -182,6 +183,206 @@ def analyze_stored_models(N, K, D, dim_output, verbose=False, filename="metric_t
     print(f"Analysis saved to {analysis_file}")
     return storage_all
 
+def analyze_stored_models_id(N, K, D, dim_output, seed, verbose=False, filename="id_metric_testing_model_data.json"):
+    """Load and compare all stored models for a given setting."""
+
+    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}_seed={seed}"
+    stored_models = load_models(key, filename=filename)
+    
+    if stored_models is None:
+        return None
+
+    num_models = len(stored_models)
+
+    print(f"Analyzing {num_models} models for {key}")
+
+    # Initialize storage for metrics
+    storage_all = np.zeros((num_models, num_models, 3, 10))  # 2: init-0, pred-1 # (true, pred, true to init/pred/true, metric)
+
+    # Loop through all pairs of models for comparison
+    for true_i in range(num_models):
+        for pred_i in range(num_models):
+
+            # Extract the true model parameters
+            true_states_seq = np.array(stored_models[true_i]["true_states_seq"])
+            true_states_seq_fit = np.array(stored_models[true_i]["true_states_seq_fit"])
+            P_base_true = np.array(stored_models[true_i]["P_base_true"])
+            W_in_true = np.array(stored_models[true_i]["W_in_true"])
+            w_true = np.array(stored_models[true_i]["w_true"])
+
+            # Select the best init
+            lls_pred_all = np.array(stored_models[pred_i]["lls_pred_all"])
+            lls_pred_all_lastnon = [last_non_nan(lls_pred_all[i]) for i in range(len(lls_pred_all))]
+            init_id = np.argmax(lls_pred_all_lastnon)
+            # Extract the predicted model init parameters
+            init_states_seq = np.array(stored_models[pred_i]["init_states_seq_all"])[init_id]
+            P_base_init = np.array(stored_models[pred_i]['P_base_init_all'])[init_id]
+            W_in_init = np.array(stored_models[pred_i]['W_in_init_all'])[init_id]
+            w_init = np.array(stored_models[pred_i]['w_init_all'])[init_id]
+
+            # Extract the predicted model parameters
+            pred_states_seq = np.array(stored_models[pred_i]["pred_states_seq_all"])[init_id]
+            pred_states_seq_fit = np.array(stored_models[pred_i]["true_states_seq_fit"])
+            P_base_pred = np.array(stored_models[pred_i]["P_base_pred_all"])[init_id]
+            W_in_pred = np.array(stored_models[pred_i]["W_in_pred_all"])[init_id]
+            w_pred = np.array(stored_models[pred_i]["w_pred_all"])[init_id]
+
+            # Extract the 2nd model parameters
+            true_states_seq2 = np.array(stored_models[pred_i]["true_states_seq"])
+            P_base_true2 = np.array(stored_models[pred_i]["P_base_true"])
+            W_in_true2 = np.array(stored_models[pred_i]["W_in_true"])
+            w_true2 = np.array(stored_models[pred_i]["w_true"])
+
+            # Align state sequences using permutation
+            perm_init = find_permutation(init_states_seq, true_states_seq)
+            init_states_perm = np.array([perm_init[init_states_seq[idx]] for idx in range(len(init_states_seq))])
+            P_base_perm_init = P_base_init[np.ix_(perm_init, perm_init)]
+            W_in_perm_init = W_in_init[perm_init, :]
+            w_perm_init = w_init[perm_init, :, :]
+
+            perm = find_permutation(pred_states_seq, true_states_seq)
+            pred_states_perm = np.array([perm[pred_states_seq[idx]] for idx in range(len(true_states_seq))])
+            P_base_perm = P_base_pred[np.ix_(perm, perm)]
+            W_in_perm = W_in_pred[perm, :]
+            w_perm = w_pred[perm, :, :]
+
+            perm2 = find_permutation(true_states_seq2, true_states_seq)
+            P_base_perm2 = P_base_true2[np.ix_(perm2, perm2)]
+            W_in_perm2 = W_in_true2[perm2, :]
+            w_perm2 = w_true2[perm2, :, :]
+
+            # vis
+            if verbose:
+                timebin=len(pred_states_perm)#500
+                cmap = 'viridis'
+                vmin, vmax = 0, np.max(true_states_seq)
+
+                if true_i == pred_i:
+                    plt.figure(figsize=(12, 12))
+
+                    # First subplot
+                    plt.subplot(611)
+                    plt.imshow(true_states_seq[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+                    plt.xlim(1, timebin)
+                    plt.ylabel("$z_{\\mathrm{true}}$")
+                    plt.yticks([])
+
+                    # Second subplot
+                    plt.subplot(612)
+                    plt.imshow(true_states_seq_fit[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+                    plt.xlim(1, timebin)
+                    plt.ylabel("$z_{\\mathrm{true fit}}$")
+                    plt.yticks([])
+
+                    # Third subplot (New Addition)
+                    plt.subplot(613)
+                    plt.imshow(pred_states_perm[None, :], aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)  # Replace `extra_data` with your third data source
+                    plt.xlim(1, timebin)
+                    plt.ylabel("$z_{\\mathrm{pred}}$")
+                    plt.yticks([])
+                    plt.xlabel("time")
+                    
+                    #######
+                    X_test = np.array(stored_models[true_i]["X_test"])
+                    n_feature = X_test.shape[1]
+
+                    plt.subplot(614)
+                    P_t_true, _ = compute_transition_probabilities(P_base_true, X_test, W_in_true)
+                    plt.xlim(1, timebin)
+                    for i in range(K):
+                        for j in range(K):
+                            plt.plot(P_t_true[i, j], label=f'state{i+1}->{j+1}')
+                    plt.legend()
+
+                    plt.subplot(615)
+                    P_t_perm, _ = compute_transition_probabilities(P_base_perm, X_test, W_in_perm)
+                    plt.xlim(1, timebin)
+                    for i in range(K):
+                        for j in range(K):
+                            plt.plot(P_t_perm[i, j], label=f'state{i+1}->{j+1}')
+                    plt.legend()
+
+                    plt.subplot(616)
+                    plt.xlim(1, timebin)
+                    for d in range(n_feature):
+                        plt.plot(X_test[:, d], label = f"feature {d+1}" if d < n_feature - 1 else 'bias')
+                    plt.tight_layout()
+                    plt.legend()
+
+                    plt.show()
+
+
+            # Compute Metrics
+            # Matrix comparison
+            P_base_true2true_element = matrix_comp(P_base_true, P_base_perm2, metric="element")
+            P_base_true2true_vector = matrix_comp(P_base_true, P_base_perm2, metric="vector")
+
+            P_base_true2pred_element = matrix_comp(P_base_true, P_base_perm, metric="element") #0
+            P_base_true2pred_vector = matrix_comp(P_base_true, P_base_perm, metric="vector") #1
+            P_base_true2init_element = matrix_comp(P_base_true, P_base_perm_init, metric="element")
+            P_base_true2init_vector = matrix_comp(P_base_true, P_base_perm_init, metric="vector")
+
+            w_true2true_element = matrix_comp(w_true, w_perm2, metric="element")
+            w_true2true_vector = matrix_comp(w_true, w_perm2, metric="vector")
+
+            w_true2pred_element = matrix_comp(w_true, w_perm, metric="element") #2
+            w_true2pred_vector = matrix_comp(w_true, w_perm, metric="vector") #3
+            w_true2init_element = matrix_comp(w_true, w_perm_init, metric="element")
+            w_true2init_vector = matrix_comp(w_true, w_perm_init, metric="vector")
+
+            W_in_true2true_element = matrix_comp(W_in_true, W_in_perm2, metric="element")
+            W_in_true2true_vector = matrix_comp(W_in_true, W_in_perm2, metric="vector")
+
+            W_in_true2pred_element = matrix_comp(W_in_true, W_in_perm, metric="element") #4
+            W_in_true2pred_vector = matrix_comp(W_in_true, W_in_perm, metric="vector") #5
+            W_in_true2init_element = matrix_comp(W_in_true, W_in_perm_init, metric="element")
+            W_in_true2init_vector = matrix_comp(W_in_true, W_in_perm_init, metric="vector")
+
+
+
+            # State seq evaluation
+            res_map_true2tf = evaluate_classification(true_states_seq, pred_states_seq_fit)
+            accuracy_true2tf = res_map_true2tf['accuracy']
+            precision_true2tf = res_map_true2tf['precision']
+            recall_true2tf = res_map_true2tf['recall']
+            f1_true2tf = res_map_true2tf['f1_score']
+
+            res_map_true2pred = evaluate_classification(true_states_seq, pred_states_perm)
+            accuracy_true2pred = res_map_true2pred['accuracy'] #6
+            precision_true2pred = res_map_true2pred['precision'] #7
+            recall_true2pred = res_map_true2pred['recall'] #8
+            f1_true2pred = res_map_true2pred['f1_score'] #9
+
+            res_map_true2init = evaluate_classification(true_states_seq, init_states_perm)
+            accuracy_true2init = res_map_true2init['accuracy']
+            precision_true2init = res_map_true2init['precision']
+            recall_true2init = res_map_true2init['recall']
+            f1_true2init = res_map_true2init['f1_score']
+
+
+            # Storage
+            # true vs init
+            storage_all[true_i, pred_i, 0] = np.array([P_base_true2init_element, P_base_true2init_vector, w_true2init_element, w_true2init_vector, \
+                W_in_true2init_element, W_in_true2init_vector, accuracy_true2init, precision_true2init, recall_true2init, f1_true2init])
+
+            # true vs pred
+            storage_all[true_i, pred_i, 1] = np.array([P_base_true2pred_element, P_base_true2pred_vector, w_true2pred_element, w_true2pred_vector, \
+                W_in_true2pred_element, W_in_true2pred_vector, accuracy_true2pred, precision_true2pred, recall_true2pred, f1_true2pred])
+
+            # true vs true (A only)
+            storage_all[true_i, pred_i, 2] = np.array([P_base_true2true_element, P_base_true2true_vector, w_true2true_element, w_true2true_vector, \
+                W_in_true2true_element, W_in_true2true_vector, accuracy_true2tf, precision_true2tf, recall_true2tf, f1_true2tf])
+
+            
+    # Save analysis results
+    analysis_file = "metric_testing_analysis_results_id.json"
+    analysis_results = {key: storage_all.tolist()}
+
+    with open(analysis_file, "w") as f:
+        json.dump(analysis_results, f, indent=4)
+
+    print(f"Analysis saved to {analysis_file}")
+    return storage_all
 
 
 # State matching using A or w

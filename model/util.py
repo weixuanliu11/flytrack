@@ -10,6 +10,27 @@ from config import colors
 
 import numpy as np
 from collections import Counter
+import numpy as np
+from scipy.special import logsumexp
+
+def compute_transition_probabilities(P_base, X, W_in):
+    """
+    Computes P(Z_t = k | Z_t-1 = j, u_t) across all t using vectorization.
+    """
+    if X.shape[1] + 1 == W_in.shape[1]:
+        X = np.hstack([X, np.ones((X.shape[0], 1))])
+    K, _ = P_base.shape
+    N, D = X.shape
+
+    P_t = np.zeros((K, K, N))
+    for t in range(N):
+        u_t = X[t]
+        if u_t.ndim == 1:
+            u_t = u_t.reshape((-1, 1))
+        log_P = np.log(P_base) + (W_in @ u_t).T
+        P = np.exp(log_P - logsumexp(log_P, axis=1, keepdims=True))
+        P_t[:,:,t] = P
+    return P_t, P_base
 
 # find the last non-NaN element(usually used on fitting lls)
 def last_non_nan(array):

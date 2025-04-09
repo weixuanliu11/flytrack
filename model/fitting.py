@@ -3,6 +3,9 @@ import numpy as np
 import ssm
 import matplotlib.pyplot as plt
 from glmhmm import GLMHMM
+import sys
+sys.path.append('/data/users/weixuan/work/model/glmhmm')
+from IDglmhmm import InputDrivenGLMHMM
 from util import last_non_nan
 
 
@@ -12,9 +15,12 @@ import numpy as np
 
 
 
-def metric_comp(storage_all, colormap = "cividis"):
-    metrics = ["A element", "A vector", "w element", "w vector", "accuracy", "precision", "recall", "f1", "match rate"]
-
+def metric_comp(storage_all, colormap = "cividis", model_type=None):
+    if model_type == "inputdriven":
+        metrics = ["P base element", "P base vector", "w element", "w vector", 'Win element', 'Win vector', "accuracy", "precision", "recall", "f1"]
+    elif model_type is None:
+        metrics = ["A element", "A vector", "w element", "w vector", "accuracy", "precision", "recall", "f1", "match rate"]
+        
     fig, axes = plt.subplots(len(metrics), 3, figsize=(12, 36))
     fig.tight_layout(pad=4.0)
 
@@ -25,10 +31,10 @@ def metric_comp(storage_all, colormap = "cividis"):
         true2pred = storage_all[:, :, 1, idx]
 
         # true vs true fit(state seq only) at place index 4, 5, 6, 7
-        accuracy_true2tf = storage_all[:, :, 2, 4]
-        precision_true2tf = storage_all[:, :, 2, 5]
-        recall_true2tf = storage_all[:, :, 2, 6]
-        f1_true2tf = storage_all[:, :, 2, 7]
+        accuracy_true2tf = storage_all[:, :, 2, 6]
+        precision_true2tf = storage_all[:, :, 2, 7]
+        recall_true2tf = storage_all[:, :, 2, 8]
+        f1_true2tf = storage_all[:, :, 2, 9]
 
         # Compute vmin and vmax for the current row (shared between true2init and true2pred)
         vmin = min(true2init.min(), true2pred.min())
@@ -47,6 +53,16 @@ def metric_comp(storage_all, colormap = "cividis"):
             true2truew_vector = storage_all[:, :, 2, idx]
             vmin = min(vmin, true2truew_vector.min())
             vmax = max(vmax, true2truew_vector.max())
+
+        if idx == 4:
+            true2trueWin_element = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2trueWin_element.min())
+            vmax = max(vmax, true2trueWin_element.max())
+
+        if idx == 5:
+            true2trueWin_vector = storage_all[:, :, 2, idx]
+            vmin = min(vmin, true2trueWin_vector.min())
+            vmax = max(vmax, true2trueWin_vector.max())
 
 
         # Plot true-to-init
@@ -99,8 +115,29 @@ def metric_comp(storage_all, colormap = "cividis"):
             for i in range(true2truew_vector.shape[0]):
                 for j in range(true2truew_vector.shape[1]):
                     ax_pred.text(j, i, f"{true2truew_vector[i, j]:.2f}", ha='center', va='center', color='white')
-
+        
         if idx == 4:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(true2trueWin_element, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            ax_pred.set_title(f"{metric} - True vs True")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(true2trueWin_element.shape[0]):
+                for j in range(true2trueWin_element.shape[1]):
+                    ax_pred.text(j, i, f"{true2trueWin_element[i, j]:.2f}", ha='center', va='center', color='white')
+
+        if idx == 5:
+            ax_pred = axes[idx, 2]
+            c2 = ax_pred.imshow(true2trueWin_vector, aspect='auto', cmap=colormap, vmin=vmin, vmax=vmax)
+            ax_pred.set_title(f"{metric} - True vs True")
+            fig.colorbar(c2, ax=ax_pred)
+            # Add text annotations for each value
+            for i in range(true2trueWin_vector.shape[0]):
+                for j in range(true2trueWin_vector.shape[1]):
+                    ax_pred.text(j, i, f"{true2trueWin_vector[i, j]:.2f}", ha='center', va='center', color='white')
+
+
+        if idx == 6:
             ax_pred = axes[idx, 2]
             c2 = ax_pred.imshow(accuracy_true2tf, aspect='auto', cmap=colormap, vmin=np.min(accuracy_true2tf), vmax=np.max(accuracy_true2tf))
             ax_pred.set_title(f"{metric} - True vs True_fit")
@@ -110,7 +147,7 @@ def metric_comp(storage_all, colormap = "cividis"):
                 for j in range(accuracy_true2tf.shape[1]):
                     ax_pred.text(j, i, f"{accuracy_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
 
-        if idx == 5:
+        if idx == 7:
             ax_pred = axes[idx, 2]
             c2 = ax_pred.imshow(precision_true2tf, aspect='auto', cmap=colormap, vmin=np.min(precision_true2tf), vmax=np.max(precision_true2tf))
             ax_pred.set_title(f"{metric} - True vs True_fit")
@@ -120,7 +157,7 @@ def metric_comp(storage_all, colormap = "cividis"):
                 for j in range(precision_true2tf.shape[1]):
                     ax_pred.text(j, i, f"{precision_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
 
-        if idx == 6:
+        if idx == 8:
             ax_pred = axes[idx, 2]
             c2 = ax_pred.imshow(recall_true2tf, aspect='auto', cmap=colormap, vmin=np.min(recall_true2tf), vmax=np.max(recall_true2tf))
             ax_pred.set_title(f"{metric} - True vs True_fit")
@@ -130,7 +167,7 @@ def metric_comp(storage_all, colormap = "cividis"):
                 for j in range(recall_true2tf.shape[1]):
                     ax_pred.text(j, i, f"{recall_true2tf[i, j]:.2f}", ha='center', va='center', color='white')
 
-        if idx == 7:
+        if idx == 9:
             ax_pred = axes[idx, 2]
             c2 = ax_pred.imshow(f1_true2tf, aspect='auto', cmap=colormap, vmin=np.min(f1_true2tf), vmax=np.max(f1_true2tf))
             ax_pred.set_title(f"{metric} - True vs True_fit")
@@ -149,10 +186,8 @@ def metric_comp(storage_all, colormap = "cividis"):
     plt.show()
 
 
-def load_models(N, K, D, dim_output, filename="metric_testing_model_data.json"):
+def load_models(key, filename="metric_testing_model_data.json"):
     """Load all stored models for a given setting."""
-    
-    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
     
     # Load JSON data
     if not os.path.exists(filename):
@@ -168,52 +203,147 @@ def load_models(N, K, D, dim_output, filename="metric_testing_model_data.json"):
     
     return data[key]
 
-def train_and_store_model(N, K, D, dim_output, testN = 3000, A_true=None, w_true=None, pi0_true=None, filename="metric_testing_model_data.json"):
+def train_and_store_model(N, K, D, dim_output, seed, testN = 3000, A_true=None, P_base_true=None, W_in_true=None, w_true=None, pi0_true=None, model_type=None, filename="id_metric_testing_model_data.json", n_init=3):
     """Train a model and store its parameters in JSON."""
     
     # Generate true model and data
-    X, Y, _, A_true, w_true, pi0_true, m_true = gen_true_param(N, K, D, dim_output, A_true=A_true, w_true=w_true, pi0_true=pi0_true)
-    X_test, Y_test, true_states_seq = m_true.generate_data(testN)
+    if model_type == "inputdriven":
+        X_total, Y_total, states_seq_total, P_base_true, W_in_true, w_true, pi0_true, m_true = gen_true_param(N+testN, K, D, dim_output, seed, A_true=A_true, P_base_true=P_base_true, W_in_true=W_in_true, w_true=w_true, pi0_true=pi0_true, model_type=model_type)
+        
+    else:
+        X_total, Y_total, states_seq_total, A_true, w_true, pi0_true, m_true = gen_true_param(N+testN, K, D, dim_output, seed, A_true=A_true, P_base_true=P_base_true, W_in_true=W_in_true, w_true=w_true, pi0_true=pi0_true, model_type=model_type)                                   
+    
+    X, X_test = X_total[:N], X_total[N:]
+    Y, Y_test = Y_total[:N], Y_total[N:]
+    true_states_seq = states_seq_total[N:]
     true_states_seq_fit = m_true.mostprob_states(X_test, Y_test).astype(int)
 
     # Train model
-    m = GLMHMM(N, K, D, dim_output, 1.0)
+    if model_type == "inputdriven":
 
-    A_init=m.transition_matrix.copy()
-    w_init=m.w.copy()
-    pi0_init  = m.pi0.copy()
-    init_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+        P_base_init_all = []
+        W_in_init_all = []
+        w_init_all = []
+        pi0_init_all = []
+        init_states_seq_all = []
 
-    lls_pred, A_pred, w_pred, pi0_pred = m.fit(Y, X, np.copy(A_init), np.copy(w_init), pi0=np.copy(pi0_init), fit_init_states=True)
-    pred_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+        
+        lls_pred_all = []
+        P_base_pred_all = []
+        W_in_pred_all = []
+        w_pred_all = []
+        pi0_pred_all = []
+        pred_states_seq_all = []
+        
+        for count in range(n_init):
+            print(f"Init {count+1}")
+            m = InputDrivenGLMHMM(N, K, D, dim_output, 1.0, list(np.arange(D + 1)))
+            P_base_init = m.P_base.copy()
+            W_in_init = m.W_in.copy()
+            w_init = m.w.copy()
+            pi0_init  = m.pi0.copy()
+            init_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
 
-    # Save the trained model's results
-    save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
-         A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit, filename=filename)
+            lls_pred, P_base_pred, W_in_pred, w_pred, pi0_pred = m.fit(Y, X)
+            pred_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+
+            P_base_init_all.append(P_base_init)
+            W_in_init_all.append(W_in_init)
+            w_init_all.append(w_init)
+            pi0_init_all.append(pi0_init)
+            init_states_seq_all.append(init_states_seq)
+
+            lls_pred_all.append(lls_pred)
+            P_base_pred_all.append(P_base_pred)
+            W_in_pred_all.append(W_in_pred)
+            w_pred_all.append(w_pred)
+            pi0_pred_all.append(pi0_pred)
+            pred_states_seq_all.append(pred_states_seq)
+
+ 
+        P_base_init_all = np.array(P_base_init_all)
+        W_in_init_all = np.array(W_in_init_all)
+        w_init_all = np.array(w_init_all)
+        pi0_init_all = np.array(pi0_init_all)
+        init_states_seq_all = np.array(init_states_seq_all)
+        
+        lls_pred_all = np.array(lls_pred_all)
+        P_base_pred_all = np.array(P_base_pred_all)
+        W_in_pred_all = np.array(W_in_pred_all)
+        w_pred_all = np.array(w_pred_all)
+        pi0_pred_all = np.array(pi0_pred_all)
+        pred_states_seq_all = np.array(pred_states_seq_all)
+
+
+        save_model_results(N, K, D, dim_output, X, Y, X_test, Y_test, None, P_base_true, W_in_true, w_true, pi0_true, true_states_seq, None, lls_pred_all, P_base_pred_all, W_in_pred_all, w_pred_all, pi0_pred_all, pred_states_seq_all,\
+            None, P_base_init_all, W_in_init_all, w_init_all, pi0_init_all, init_states_seq_all, true_states_seq_fit, seed, model_type = model_type, filename=filename)
+
+    else:   
+        m = GLMHMM(N, K, D, dim_output, 1.0)
+
+        A_init=m.transition_matrix.copy()
+        w_init=m.w.copy()
+        pi0_init  = m.pi0.copy()
+        init_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+
+        lls_pred, A_pred, w_pred, pi0_pred = m.fit(Y, X, np.copy(A_init), np.copy(w_init), pi0=np.copy(pi0_init), fit_init_states=True)
+        pred_states_seq = m.mostprob_states(X_test, Y_test).astype(int)
+
+        # Save the trained model's results
+        save_model_results(N, K, D, dim_output, A_true, None, None, w_true, pi0_true, true_states_seq, A_pred, None, None, w_pred, pi0_pred, pred_states_seq,\
+            A_init, None, None, w_init, pi0_init, init_states_seq, true_states_seq_fit, model_type = model_type, filename=filename)
    
 
-def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_states_seq, A_pred, w_pred, pi0_pred, pred_states_seq,\
-    A_init, w_init, pi0_init, init_states_seq, true_states_seq_fit, filename="metric_testing_model_data.json"):
+def save_model_results(N, K, D, dim_output, X, Y, X_test, Y_test, A_true, P_base_true, W_in_true, w_true, pi0_true, true_states_seq, A_pred, lls_pred_all, P_base_pred_all, W_in_pred_all, w_pred_all, pi0_pred_all, pred_states_seq_all,\
+    A_init, P_base_init_all, W_in_init_all, w_init_all, pi0_init_all, init_states_seq_all, true_states_seq_fit, seed, model_type=None, filename="metric_testing_model_data.json"):
     """Save trained model parameters to JSON, appending to existing settings if present."""
     
     # Convert NumPy arrays to lists for JSON storage
-    model_data = {
-        "A_true": A_true.tolist(),
-        "w_true": w_true.tolist(),
-        "pi0_true": pi0_true.tolist(),
-        "true_states_seq": true_states_seq.tolist(),
-        "true_states_seq_fit": true_states_seq_fit.tolist(),
+    if model_type == "inputdriven":
+        model_data = {
+            'X': X.tolist(),
+            'Y': Y.tolist(),
+            'X_test': X_test.tolist(),
+            'Y_test': Y_test.tolist(),
 
-        "A_init": A_init.tolist(),
-        "w_init": w_init.tolist(),
-        "pi0_init": pi0_init.tolist(),
-        "init_states_seq": init_states_seq.tolist(),
+            "P_base_true": P_base_true.tolist(),
+            "W_in_true": W_in_true.tolist(),
+            "w_true": w_true.tolist(),
+            "pi0_true": pi0_true.tolist(),
+            "true_states_seq": true_states_seq.tolist(),
+            "true_states_seq_fit": true_states_seq_fit.tolist(),
 
-        "A_pred": A_pred.tolist(),
-        "w_pred": w_pred.tolist(),
-        "pi0_pred": pi0_pred.tolist(),
-        "pred_states_seq": pred_states_seq.tolist(),
-    }
+            "P_base_init_all": P_base_init_all.tolist(),
+            "W_in_init_all": W_in_init_all.tolist(),
+            "w_init_all": w_init_all.tolist(),
+            "pi0_init_all": pi0_init_all.tolist(),
+            "init_states_seq_all": init_states_seq_all.tolist(),
+
+            "P_base_pred_all": P_base_pred_all.tolist(),
+            "W_in_pred_all": W_in_pred_all.tolist(),
+            "w_pred_all": w_pred_all.tolist(),
+            "pi0_pred_all": pi0_pred_all.tolist(),
+            "pred_states_seq_all": pred_states_seq_all.tolist(),
+            "lls_pred_all": lls_pred_all.tolist()
+        }
+    elif model_type is None:
+        model_data = {
+            "A_true": A_true.tolist(),
+            "w_true": w_true.tolist(),
+            "pi0_true": pi0_true.tolist(),
+            "true_states_seq": true_states_seq.tolist(),
+            "true_states_seq_fit": true_states_seq_fit.tolist(),
+
+            "A_init": A_init.tolist(),
+            "w_init": w_init_all.tolist(),
+            "pi0_init": pi0_init_all.tolist(),
+            "init_states_seq": init_states_seq_all.tolist(),
+
+            "A_pred": A_pred.tolist(),
+            "w_pred": w_pred_all.tolist(),
+            "pi0_pred": pi0_pred_all.tolist(),
+            "pred_states_seq": pred_states_seq_all.tolist(),
+        }
 
     # Load existing JSON data
     if os.path.exists(filename):
@@ -223,7 +353,7 @@ def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_state
         data = {}
 
     # Create a unique key based on (N, K, D, dim_output)
-    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}"
+    key = f"N={N}_K={K}_D={D}_dim_output={dim_output}_seed={seed}"
 
     # Append new model data to existing key or create a new entry
     if key in data:
@@ -240,7 +370,7 @@ def save_model_results(N, K, D, dim_output, A_true, w_true, pi0_true, true_state
 
 
 # set up a true glmhmm model and generate X, Y, and state seq from it
-def gen_true_param(N, K, D, dim_output, w_low = -1, w_high=1, A_true=None, w_true=None, pi0_true=None):
+def gen_true_param(N, K, D, dim_output, seed, w_low = -1, w_high=1, A_true=None, P_base_true=None, W_in_true=None, w_true=None, pi0_true=None, model_type=None):
     div_pt = np.linspace(w_low, w_high, K+1)
     w_true = np.zeros((K, D + 1, dim_output))
     for d in range(D + 1):
@@ -250,22 +380,42 @@ def gen_true_param(N, K, D, dim_output, w_low = -1, w_high=1, A_true=None, w_tru
 
     # # bias <- 0s
     # w_true = np.pad(w_true, ((0, 0), (0, 1), (0, 0)), mode='constant')
+    if model_type == "inputdriven":
+        model_true = InputDrivenGLMHMM(N, K, D, dim_output, 1e-3, list(np.arange(2, D + 1))) #N, n_states, n_features, n_outputs
+        model_true.w = w_true
+        if P_base_true is not None:
+            model_true.P_base = P_base_true
+        if W_in_true is not None:
+            model_true.W_in = W_in_true
+        if w_true is not None:
+            model_true.w = w_true
+        if pi0_true is not None:
+            model_true.pi0 = pi0_true
 
-    model_true = GLMHMM(N, K, D, dim_output, 1e-3) #N, n_states, n_features, n_outputs
-    model_true.w = w_true
-    if A_true is not None:
-      model_true.transition_matrix = A_true
-    if w_true is not None:
-      model_true.w = w_true
-    if pi0_true is not None:
-      model_true.pi0 = pi0_true
+        P_base_true = model_true.P_base
+        W_in_true = model_true.W_in
+        w_true = model_true.w
+        pi0_true = model_true.pi0
 
-    A_true = model_true.transition_matrix
-    w_true = model_true.w
-    pi0_true = model_true.pi0
+        X, Y, states = model_true.generate_data(N, seed)
+        return X, Y, states, P_base_true, W_in_true, w_true, pi0_true, model_true
+    
+    else: 
+        model_true = GLMHMM(N, K, D, dim_output, 1e-3) #N, n_states, n_features, n_outputs
+        model_true.w = w_true
+        if A_true is not None:
+            model_true.transition_matrix = A_true
+        if w_true is not None:
+            model_true.w = w_true
+        if pi0_true is not None:
+            model_true.pi0 = pi0_true
 
-    X, Y, states = model_true.generate_data(N)
-    return X, Y, states, A_true, w_true, pi0_true, model_true
+        A_true = model_true.transition_matrix
+        w_true = model_true.w
+        pi0_true = model_true.pi0
+
+        X, Y, states = model_true.generate_data(N)
+        return X, Y, states, A_true, w_true, pi0_true, model_true
 
 # Finding the optimal number of states using cross validation
 def OptStateCV_traj(train_trajectories, traj_metric=None, model_name = "hmm", states_cands=[1,2,3,4,5], n_folds=6, inpts=None, num_init=3, obs_dist="gaussian", N_iters=100, verbose=False):

@@ -28,7 +28,7 @@ class GLMHMM:
         self.n_features = n_features + 1 # D
         self.n_outputs = n_outputs
         self.max_iter = max_iter
-        self.optimizer_tol = None
+        self.optimizer_tol = 1e-4
 
         # Initialize
         if em_dist == "gaussian":
@@ -133,10 +133,7 @@ class GLMHMM:
             thetak = self.dist_param(w[k], x) # calculate theta
             for t in range(self.N):
                 phi[t,k] = self.dist_pdf(y[t], thetak[t], otherparamk=self.covariances[k]) # calculate phi
-                # print('theta[t]', thetak[t])
-                # print('y[t]', y[t])
-                # print('phi[t,k]', phi[t,k])
-        # print("phi", phi)
+    
         if sess is None:
             sess = np.array([0,self.N]) # equivalent to saying the entire data set has one session
 
